@@ -1,5 +1,8 @@
 *~
 /bazel-*
+.cache/
+dist/
+**/.DS_Store
 MODULE.bazel.lock
 tags
 releasing/out

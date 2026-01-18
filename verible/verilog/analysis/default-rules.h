@@ -33,6 +33,17 @@ inline constexpr const char* kDefaultRuleSet[] = {
     "forbid-line-continuations",
     "generate-label",
     "generate-label-prefix",
+    "GJB-10157-R-2-1",
+    "GJB-10157-R-2-2",
+    "GJB-10157-R-2-3",
+    "GJB-10157-R-2-4",
+    "GJB-10157-R-2-5",
+    "GJB-10157-R-2-6",
+    "GJB-10157-R-2-7",
+    "GJB-10157-R-2-8",
+    "GJB-10157-R-2-9",
+    "GJB-10157-R-2-10",
+    "GJB-10157-A-2-1",
     "always-comb",
     //"disable-statement", // temporary disabled
     "v2001-generate-begin",
@@ -48,10 +59,10 @@ inline constexpr const char* kDefaultRuleSet[] = {
     "explicit-function-lifetime",
     "explicit-function-task-parameter-type",
     "explicit-task-lifetime",
-    "explicit-parameter-storage-type",
+    // "explicit-parameter-storage-type",  // disabled by default
     "plusarg-assignment",
     "macro-name-style",
-    "parameter-name-style",
+    // "parameter-name-style",  // disabled by default
     "typedef-enums",
     "forbid-defparam",
     "typedef-structs-unions",
@@ -81,6 +92,32 @@ inline constexpr const char* kDefaultRuleSet[] = {
 // LINT.ThenChange(../tools/lint/BUILD)
 //   Update integration tests for rulesets.
 // clang-format on
+
+// GJB 10157 ruleset - includes all GJB rules plus selected coding rules
+// Use --ruleset gjb
+// clang-format off
+inline constexpr const char* kGJBRuleSet[] = {
+    // GJB 10157 Required rules (R-2-x) - error severity
+    "GJB-10157-R-2-1",
+    "GJB-10157-R-2-2",
+    "GJB-10157-R-2-3",
+    "GJB-10157-R-2-4",
+    "GJB-10157-R-2-5",
+    "GJB-10157-R-2-6",
+    "GJB-10157-R-2-7",
+    "GJB-10157-R-2-8",
+    "GJB-10157-R-2-9",
+    "GJB-10157-R-2-10",
+    // GJB 10157 Advisory rules (A-2-x) - warning severity
+    "GJB-10157-A-2-1",
+    // Additional coding style rules
+    "always-comb",
+    "always-comb-blocking",
+    // Note: explicit-parameter-storage-type, parameter-name-style,
+    // and instance-shadowing are intentionally NOT included (disabled)
+};
+// clang-format on
+
 }  // namespace analysis
 }  // namespace verilog
 

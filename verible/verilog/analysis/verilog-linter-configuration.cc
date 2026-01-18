@@ -230,6 +230,12 @@ void LinterConfiguration::UseRuleSet(const RuleSet &rules) {
       for (const auto &rule : analysis::kDefaultRuleSet) {
         TurnOn(rule);
       }
+      break;
+    case RuleSet::kGJB:
+      for (const auto &rule : analysis::kGJBRuleSet) {
+        TurnOn(rule);
+      }
+      break;
   }
 }
 
@@ -409,6 +415,7 @@ static const verible::EnumNameMap<RuleSet> &RuleSetEnumStringMap() {
       {"all", RuleSet::kAll},
       {"none", RuleSet::kNone},
       {"default", RuleSet::kDefault},
+      {"gjb", RuleSet::kGJB},
   });
   return kRuleSetEnumStringMap;
 }

@@ -154,13 +154,20 @@ struct LintViolation {
   }
 };
 
+// Severity level for lint rule status (mirrors verilog::analysis::LintRuleSeverity)
+enum class LintSeverity {
+  kError = 1,    // Mandatory rules (red in IDE)
+  kWarning = 2,  // Advisory rules (yellow in IDE)
+};
+
 // LintRuleStatus represents the result of running a single lint rule.
 struct LintRuleStatus {
   LintRuleStatus() = default;
 
   LintRuleStatus(const std::set<LintViolation> &vs, std::string_view rule_name,
-                 const std::string &url)
-      : lint_rule_name(rule_name), url(url), violations(vs) {}
+                 const std::string &url,
+                 LintSeverity sev = LintSeverity::kError)
+      : lint_rule_name(rule_name), url(url), severity(sev), violations(vs) {}
 
   // TODO(hzeller): the LintRuleDescriptor is in verilog/analysis namespace,
   // don't want to move that to common in first step. So making this a
@@ -170,6 +177,7 @@ struct LintRuleStatus {
                  const Descriptor &descriptor)
       : lint_rule_name(descriptor.name),
         url(GetStyleGuideCitation(descriptor.topic)),
+        severity(static_cast<LintSeverity>(descriptor.severity)),
         violations(vs) {}
 
   explicit LintRuleStatus(const std::set<LintViolation> &vs) : violations(vs) {}
@@ -185,6 +193,9 @@ struct LintRuleStatus {
 
   // Hold link to engdoc summary of violated rule
   std::string url;
+
+  // Severity level of the rule (error or warning)
+  LintSeverity severity = LintSeverity::kError;
 
   // Contains all violations of the LintRule
   std::set<LintViolation> violations;

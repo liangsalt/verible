@@ -50,6 +50,11 @@ static verible::lsp::Diagnostic ViolationToDiagnostic(
   const verible::LintViolation &violation = *v.violation;
   const verible::LineColumnRange range = text.GetRangeForToken(violation.token);
   const char *fix_msg = violation.autofixes.empty() ? "" : " (fix available)";
+  // Map rule severity to LSP DiagnosticSeverity
+  const auto lsp_severity =
+      (v.status->severity == verible::LintSeverity::kWarning)
+          ? verible::lsp::DiagnosticSeverity::kWarning
+          : verible::lsp::DiagnosticSeverity::kError;
   return verible::lsp::Diagnostic{
       .range =
           {
@@ -57,7 +62,7 @@ static verible::lsp::Diagnostic ViolationToDiagnostic(
                         .character = range.start.column},
               .end = {.line = range.end.line, .character = range.end.column},
           },
-      .severity = verible::lsp::DiagnosticSeverity::kWarning,
+      .severity = lsp_severity,
       .has_severity = true,
       .message = absl::StrCat(violation.reason, " ", v.status->url, "[",
                               v.status->lint_rule_name, "]", fix_msg),

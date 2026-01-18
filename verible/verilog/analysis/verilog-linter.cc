@@ -70,7 +70,7 @@ ABSL_FLAG(verilog::RuleBundle, rules, {},
 ABSL_FLAG(std::string, rules_config, "",
           "Path to lint rules configuration file. "
           "Disables --rule_config_search if set.");
-ABSL_FLAG(bool, rules_config_search, false,
+ABSL_FLAG(bool, rules_config_search, true,
           "Look for lint rules configuration file '.rules.verible_lint' "
           "searching upward from the location of each analyzed file.");
 ABSL_FLAG(verilog::RuleSet, ruleset, verilog::RuleSet::kDefault,

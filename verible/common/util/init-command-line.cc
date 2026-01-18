@@ -93,7 +93,12 @@ std::vector<std::string_view> InitCommandLine(
     std::string_view usage,
     int *argc,  // NOLINT(readability-non-const-parameter)
     char ***argv) {
+#ifndef _WIN32
+  // Skip symbolizer initialization on Windows due to SymInitialize race
+  // condition bug in Windows 10 dbghelp.dll. This sacrifices crash stack
+  // traces but prevents startup crashes. See: abseil/abseil-cpp#1871
   absl::InitializeSymbolizer(*argv[0]);
+#endif
   absl::FlagsUsageConfig usage_config;
   usage_config.version_string = GetBuildVersion;
   absl::SetFlagsUsageConfig(usage_config);

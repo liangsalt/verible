@@ -28,6 +28,14 @@ namespace analysis {
 
 using LintRuleId = std::string_view;
 
+// Severity level for lint rules.
+// kError: Mandatory rules that must be fixed (displayed in red in IDE)
+// kWarning: Advisory rules that are recommendations (displayed in yellow in IDE)
+enum class LintRuleSeverity {
+  kError = 1,    // Maps to LSP DiagnosticSeverity::kError (red)
+  kWarning = 2,  // Maps to LSP DiagnosticSeverity::kWarning (yellow)
+};
+
 struct LintConfigParameterDescriptor {
   std::string_view name;
   std::string default_value;
@@ -39,6 +47,7 @@ struct LintRuleDescriptor {
   std::string_view topic;  // section in style-guide
   std::string desc;        // Detailed description.
   std::vector<LintConfigParameterDescriptor> param;
+  LintRuleSeverity severity = LintRuleSeverity::kError;  // Default to error
 };
 
 }  // namespace analysis

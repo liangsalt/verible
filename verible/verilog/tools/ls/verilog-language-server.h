@@ -19,6 +19,7 @@
 #include <string_view>
 
 #include "absl/status/status.h"
+#include "nlohmann/json.hpp"
 #include "verible/common/lsp/json-rpc-dispatcher.h"
 #include "verible/common/lsp/lsp-protocol.h"
 #include "verible/common/lsp/lsp-text-buffer.h"
@@ -74,6 +75,13 @@ class VerilogLanguageServer {
   // Publish a diagnostic sent to the server.
   void SendDiagnostics(const std::string &uri,
                        const verilog::BufferTracker &buffer_tracker);
+
+  // Re-lint all buffers and send updated diagnostics.
+  // Called after top modules are detected to ensure R-2-10 rule works.
+  void RefreshAllDiagnostics();
+
+  // Handle workspace files notification from client.
+  void HandleUpdateWorkspaceFiles(const nlohmann::json &params);
 
   // Stream splitter splits the input stream into messages (header/body).
   verible::lsp::MessageStreamSplitter stream_splitter_;

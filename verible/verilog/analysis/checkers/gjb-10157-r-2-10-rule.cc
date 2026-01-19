@@ -20,7 +20,9 @@
 #include <string_view>
 #include <vector>
 
+#include "absl/flags/flag.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "verible/common/analysis/lint-rule-status.h"
 #include "verible/common/analysis/syntax-tree-search.h"
 #include "verible/common/text/concrete-syntax-leaf.h"
@@ -29,12 +31,14 @@
 #include "verible/common/text/text-structure.h"
 #include "verible/common/text/token-info.h"
 #include "verible/common/text/tree-utils.h"
+#include "verible/verilog/CST/identifier.h"
 #include "verible/verilog/CST/module.h"
 #include "verible/verilog/CST/port.h"
 #include "verible/verilog/CST/verilog-matchers.h"
 #include "verible/verilog/CST/verilog-nonterminals.h"
 #include "verible/verilog/analysis/descriptions.h"
 #include "verible/verilog/analysis/lint-rule-registry.h"
+#include "verible/verilog/analysis/top-modules-flag.h"
 #include "verible/verilog/parser/verilog-token-enum.h"
 
 namespace verilog {
@@ -63,23 +67,93 @@ absl::Status Gjb10157R210Rule::Configure(std::string_view configuration) {
       "This rule does not accept any configuration.");
 }
 
-// Collect all SymbolIdentifier tokens in a subtree
-static void CollectAllIdentifiers(const verible::Symbol& root,
-                                   std::set<std::string_view>& identifiers) {
+// Structure to hold input port info
+struct InputPortInfo {
+  const verible::TokenInfo* token;
+  std::string_view name;
+};
+
+// Collect input ports from ANSI-style port declarations (inline in header)
+// These are kPortDeclaration nodes: module foo(input clk, output dout);
+static void CollectAnsiInputPorts(const verible::Symbol& module_symbol,
+                                   const SyntaxTreeContext& context,
+                                   std::vector<InputPortInfo>& input_ports) {
+  auto port_matches = FindAllPortDeclarations(module_symbol);
+  for (const auto& port_match : port_matches) {
+    const auto* direction_leaf =
+        GetDirectionFromPortDeclaration(*port_match.match);
+    if (direction_leaf == nullptr) continue;
+
+    std::string_view direction = direction_leaf->get().text();
+    if (direction != "input") continue;
+
+    const auto* id_leaf =
+        GetIdentifierFromPortDeclaration(*port_match.match);
+    if (id_leaf == nullptr) continue;
+
+    input_ports.push_back({&id_leaf->get(), id_leaf->get().text()});
+  }
+}
+
+// Collect input ports from non-ANSI-style port declarations (in module body)
+// These are kModulePortDeclaration nodes: module foo(clk); input clk; endmodule
+static void CollectNonAnsiInputPorts(const verible::Symbol& module_symbol,
+                                      const SyntaxTreeContext& context,
+                                      std::vector<InputPortInfo>& input_ports) {
+  auto port_matches = FindAllModulePortDeclarations(module_symbol);
+  for (const auto& port_match : port_matches) {
+    const auto* direction_leaf =
+        GetDirectionFromModulePortDeclaration(*port_match.match);
+    if (direction_leaf == nullptr) continue;
+
+    std::string_view direction = direction_leaf->get().text();
+    if (direction.find("input") == std::string_view::npos) continue;
+
+    const auto* id_leaf =
+        GetIdentifierFromModulePortDeclaration(*port_match.match);
+    if (id_leaf == nullptr) continue;
+
+    input_ports.push_back({&id_leaf->get(), id_leaf->get().text()});
+  }
+}
+
+// Count all occurrences of SymbolIdentifier tokens in a subtree,
+// excluding identifiers in port declarations.
+static void CountAllIdentifiers(const verible::Symbol& root,
+                                 std::map<std::string_view, int>& id_counts) {
   if (root.Kind() == verible::SymbolKind::kLeaf) {
     const auto& leaf = verible::SymbolCastToLeaf(root);
     if (leaf.get().token_enum() == SymbolIdentifier) {
-      identifiers.insert(leaf.get().text());
+      id_counts[leaf.get().text()]++;
     }
     return;
   }
-  
+
   const auto& node = verible::SymbolCastToNode(root);
+  // Skip port declarations - don't count identifier in its own declaration
+  if (node.MatchesTag(NodeEnum::kModulePortDeclaration)) {
+    return;
+  }
+
   for (const auto& child : node.children()) {
     if (child != nullptr) {
-      CollectAllIdentifiers(*child, identifiers);
+      CountAllIdentifiers(*child, id_counts);
     }
   }
+}
+
+// Get the module body (items after the port list)
+static const verible::SyntaxTreeNode* GetModuleBody(
+    const verible::Symbol& module_decl) {
+  auto matches = SearchSyntaxTree(module_decl, NodekModuleItemList());
+  if (matches.empty()) return nullptr;
+  return &verible::SymbolCastToNode(*matches[0].match);
+}
+
+// Check if a module is in the top modules list.
+static bool IsTopModule(std::string_view module_name,
+                        const std::set<std::string>& top_modules_set) {
+  return top_modules_set.count(std::string(module_name)) > 0;
 }
 
 void Gjb10157R210Rule::Lint(const verible::TextStructureView& text_structure,
@@ -87,124 +161,79 @@ void Gjb10157R210Rule::Lint(const verible::TextStructureView& text_structure,
   const auto& tree = text_structure.SyntaxTree();
   if (tree == nullptr) return;
 
-  // Find all module declarations
-  auto module_matches = FindAllModuleDeclarations(*tree);
-  
-  for (const auto& module_match : module_matches) {
-    const verible::Symbol* module_symbol = module_match.match;
-    if (module_symbol == nullptr) continue;
-    
-    // Find all port declarations in this module
-    auto port_matches = FindAllModulePortDeclarations(*module_symbol);
-    
-    // Collect input port names and their tokens
-    std::map<std::string_view, const verible::TokenInfo*> input_ports;
-    
-    for (const auto& port_match : port_matches) {
-      const auto* direction_leaf = 
-          GetDirectionFromModulePortDeclaration(*port_match.match);
-      if (direction_leaf == nullptr) continue;
-      
-      // Check if it's an input port
-      std::string_view direction = direction_leaf->get().text();
-      if (direction != "input") continue;
-      
-      // Get the port identifier
-      const auto* id_leaf = 
-          GetIdentifierFromModulePortDeclaration(*port_match.match);
-      if (id_leaf == nullptr) continue;
-      
-      input_ports[id_leaf->get().text()] = &id_leaf->get();
-    }
-    
-    if (input_ports.empty()) continue;
-    
-    // Collect all identifier references in the module body
-    std::set<std::string_view> used_identifiers;
-    CollectAllIdentifiers(*module_symbol, used_identifiers);
-    
-    // Check each input port - it should be referenced more than once
-    // (once in declaration, at least once in usage)
-    for (const auto& [port_name, token] : input_ports) {
-      // Count occurrences of this identifier
-      int count = 0;
-      for (const auto& id : used_identifiers) {
-        if (id == port_name) count++;
-      }
-      
-      // If only found in declaration (count <= 1), it's unused
-      // We use a simpler heuristic: check if it appears in used_identifiers
-      // but since we're collecting all, we need to be smarter
-      // Actually, used_identifiers is a set, so count is always 0 or 1
-      // Let's recollect with counting
+  // Get the top modules from multiple sources:
+  // 1. Command-line flag (--top_modules)
+  // 2. Global cache (set by Language Server)
+  std::set<std::string> top_modules_set;
+
+  // First, check command-line flag
+  const std::string top_modules_flag = absl::GetFlag(FLAGS_top_modules);
+  for (const auto& module : absl::StrSplit(top_modules_flag, ',', absl::SkipEmpty())) {
+    top_modules_set.insert(std::string(module));
+  }
+
+  // If flag is empty, try the global cache (set by Language Server)
+  if (top_modules_set.empty()) {
+    const auto& cache = TopModulesCache::GetInstance();
+    if (cache.HasTopModules()) {
+      top_modules_set = cache.GetTopModules();
     }
   }
-  
-  // Simplified approach: For each module, find inputs and check if they
-  // appear in expressions (not just declarations)
+
+  // If still no top modules, skip check entirely.
+  // This rule requires project-level analysis to identify top modules.
+  if (top_modules_set.empty()) return;
+
+  auto module_matches = FindAllModuleDeclarations(*tree);
+
   for (const auto& module_match : module_matches) {
     const verible::Symbol* module_symbol = module_match.match;
     if (module_symbol == nullptr) continue;
-    
-    auto port_matches = FindAllModulePortDeclarations(*module_symbol);
-    
-    struct InputPortInfo {
-      const verible::TokenInfo* token;
-      bool used;
-    };
-    std::map<std::string_view, InputPortInfo> input_ports;
-    
-    for (const auto& port_match : port_matches) {
-      const auto* direction_leaf = 
-          GetDirectionFromModulePortDeclaration(*port_match.match);
-      if (direction_leaf == nullptr) continue;
-      
-      if (direction_leaf->get().text() != "input") continue;
-      
-      const auto* id_leaf = 
-          GetIdentifierFromModulePortDeclaration(*port_match.match);
-      if (id_leaf == nullptr) continue;
-      
-      input_ports[id_leaf->get().text()] = {&id_leaf->get(), false};
-    }
-    
+
+    // Get the module name.
+    const auto* module_name_leaf = GetModuleName(*module_symbol);
+    if (module_name_leaf == nullptr) continue;
+    std::string_view module_name = module_name_leaf->get().text();
+
+    // Only check top-level modules.
+    if (!IsTopModule(module_name, top_modules_set)) continue;
+
+    // Collect input ports from both ANSI and non-ANSI styles
+    std::vector<InputPortInfo> input_ports;
+    CollectAnsiInputPorts(*module_symbol, module_match.context, input_ports);
+    CollectNonAnsiInputPorts(*module_symbol, module_match.context, input_ports);
+
     if (input_ports.empty()) continue;
-    
-    // Find all symbol identifier references in the module
-    auto id_matches = SearchSyntaxTree(*module_symbol, NodekReference());
-    
-    for (const auto& id_match : id_matches) {
-      const auto* leftmost = verible::GetLeftmostLeaf(*id_match.match);
-      if (leftmost != nullptr && 
-          leftmost->get().token_enum() == SymbolIdentifier) {
-        auto it = input_ports.find(leftmost->get().text());
-        if (it != input_ports.end()) {
-          it->second.used = true;
-        }
-      }
-    }
-    
-    // Also check in expressions
-    auto expr_matches = SearchSyntaxTree(*module_symbol, NodekExpression());
-    for (const auto& expr_match : expr_matches) {
-      std::set<std::string_view> expr_ids;
-      CollectAllIdentifiers(*expr_match.match, expr_ids);
-      for (const auto& id : expr_ids) {
-        auto it = input_ports.find(id);
-        if (it != input_ports.end()) {
-          it->second.used = true;
-        }
-      }
-    }
-    
-    // Report unused inputs
-    for (const auto& [port_name, info] : input_ports) {
-      if (!info.used) {
+
+    // Get the module body
+    const auto* module_body = GetModuleBody(*module_symbol);
+    if (module_body == nullptr) {
+      // If no body, all inputs are unused
+      for (const auto& port_info : input_ports) {
         std::string reason = absl::StrCat(
-            "Input port '", port_name,
+            "Top-level module '", module_name, "': Input port '", port_info.name,
             "' is declared but never used (floating input). "
             "[GJB 10157 R-2-10]");
-        violations_.insert(LintViolation(*info.token, reason, module_match.context));
+        violations_.insert(LintViolation(*port_info.token, reason, module_match.context));
+      }
+      continue;
+    }
+
+    // Count all identifier occurrences in the module body only
+    std::map<std::string_view, int> id_counts;
+    CountAllIdentifiers(*module_body, id_counts);
+
+    // Check each input port
+    for (const auto& port_info : input_ports) {
+      auto it = id_counts.find(port_info.name);
+      int count = (it != id_counts.end()) ? it->second : 0;
+
+      if (count == 0) {
+        std::string reason = absl::StrCat(
+            "Top-level module '", module_name, "': Input port '", port_info.name,
+            "' is declared but never used (floating input). "
+            "[GJB 10157 R-2-10]");
+        violations_.insert(LintViolation(*port_info.token, reason, module_match.context));
       }
     }
   }

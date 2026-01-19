@@ -191,6 +191,13 @@ void VerilogLanguageServer::SetRequestHandlers() {
     shutdown_requested_ = true;
     return nullptr;
   });
+
+  // Handle workspace files notification from client (DUDUlinter plugin)
+  dispatcher_.AddNotificationHandler(
+      "verible/updateWorkspaceFiles",
+      [this](const nlohmann::json &params) {
+        HandleUpdateWorkspaceFiles(params);
+      });
 }
 
 absl::Status VerilogLanguageServer::Step(const ReadFun &read_fun) {
@@ -256,6 +263,14 @@ void VerilogLanguageServer::ConfigureProject(std::string_view project_root) {
       proj_root, std::vector<std::string>(), "");
   symbol_table_handler_.SetProject(proj);
 
+  // Build symbol table early to detect top modules for R-2-10 rule.
+  // This sets FLAGS_top_modules and TopModulesCache before any lint runs.
+  symbol_table_handler_.BuildProjectSymbolTable();
+  symbol_table_handler_.UpdateTopModulesFlag();
+
+  // Re-lint all already-opened buffers with updated top modules info.
+  RefreshAllDiagnostics();
+
   // Whenever an updated buffer in editor is available, update symbol table.
   parsed_buffers_.AddChangeListener(
       symbol_table_handler_.CreateBufferTrackerListener());
@@ -277,6 +292,56 @@ void VerilogLanguageServer::SendDiagnostics(
   params.diagnostics =
       verilog::CreateDiagnostics(buffer_tracker, kDiagnosticLimit);
   dispatcher_.SendNotification("textDocument/publishDiagnostics", params);
+}
+
+void VerilogLanguageServer::RefreshAllDiagnostics() {
+  // Re-lint all buffers with updated configuration (e.g., top modules).
+  parsed_buffers_.ReLintAll();
+
+  // Send updated diagnostics for all tracked buffers.
+  for (const std::string &uri : parsed_buffers_.GetAllUris()) {
+    const BufferTracker *tracker = parsed_buffers_.FindBufferTrackerOrNull(uri);
+    if (tracker) {
+      SendDiagnostics(uri, *tracker);
+    }
+  }
+}
+
+void VerilogLanguageServer::HandleUpdateWorkspaceFiles(
+    const nlohmann::json &params) {
+  LOG(INFO) << "HandleUpdateWorkspaceFiles called";
+
+  if (!params.contains("files") || !params["files"].is_array()) {
+    LOG(WARNING) << "verible/updateWorkspaceFiles: missing or invalid 'files' array";
+    LOG(WARNING) << "Params received: " << params.dump();
+    return;
+  }
+
+  std::vector<std::string> files;
+  for (const auto &file : params["files"]) {
+    if (file.is_string()) {
+      files.push_back(file.get<std::string>());
+    }
+  }
+
+  LOG(INFO) << "Received " << files.size() << " workspace files from client";
+  if (!files.empty()) {
+    LOG(INFO) << "First file: " << files[0];
+  }
+
+  if (files.empty()) {
+    return;
+  }
+
+  // Update the symbol table handler with the workspace files
+  symbol_table_handler_.SetWorkspaceFiles(files);
+
+  // Rebuild symbol table and update top modules
+  symbol_table_handler_.BuildProjectSymbolTable();
+  symbol_table_handler_.UpdateTopModulesFlag();
+
+  // Refresh diagnostics for all open files
+  RefreshAllDiagnostics();
 }
 
 };  // namespace verilog

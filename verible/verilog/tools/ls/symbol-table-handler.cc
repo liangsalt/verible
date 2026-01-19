@@ -20,6 +20,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -31,6 +32,8 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "verible/verilog/analysis/top-modules-flag.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "verible/common/lsp/lsp-file-utils.h"
@@ -276,7 +279,22 @@ const SymbolTableNode *SymbolTableHandler::ScanSymbolTreeForDefinition(
 
 void SymbolTableHandler::Prepare() {
   LoadProjectFileList(curr_project_->TranslationUnitRoot());
-  if (files_dirty_) BuildProjectSymbolTable();
+  if (files_dirty_) {
+    BuildProjectSymbolTable();
+    // After building symbol table, update FLAGS_top_modules for lint rules.
+    UpdateTopModulesFlag();
+  }
+}
+
+void SymbolTableHandler::UpdateTopModulesFlag() {
+  std::vector<std::string> top_modules = GetTopModules();
+  if (!top_modules.empty()) {
+    // Update both the flag and the global cache
+    std::string top_modules_str = absl::StrJoin(top_modules, ",");
+    absl::SetFlag(&FLAGS_top_modules, top_modules_str);
+    // Also update the global cache for lint rules to access directly
+    verilog::analysis::TopModulesCache::GetInstance().SetTopModules(top_modules);
+  }
 }
 
 std::optional<verible::TokenInfo>
@@ -554,6 +572,88 @@ SymbolTableHandler::CreateBufferTrackerListener() {
     UpdateFileContent(
         path, buffer_tracker ? &buffer_tracker->current()->parser() : nullptr);
   };
+}
+
+void SymbolTableHandler::SetWorkspaceFiles(
+    const std::vector<std::string> &files) {
+  if (!curr_project_) {
+    LOG(WARNING) << "SetWorkspaceFiles called but no project is set";
+    return;
+  }
+
+  VLOG(1) << "Setting " << files.size() << " workspace files";
+
+  // Add files to the project
+  int actually_opened = 0;
+  for (const auto &file_path : files) {
+    const std::string canonicalized =
+        std::filesystem::path(file_path).lexically_normal().string();
+    absl::StatusOr<VerilogSourceFile *> source =
+        curr_project_->OpenTranslationUnit(canonicalized);
+    if (!source.ok()) {
+      source = curr_project_->OpenIncludedFile(canonicalized);
+    }
+    if (!source.ok()) {
+      VLOG(1) << "Could not open workspace file: " << canonicalized
+              << ": " << source.status();
+      continue;
+    }
+    ++actually_opened;
+  }
+
+  files_dirty_ |= (actually_opened > 0);
+  VLOG(1) << "Successfully opened " << actually_opened << " workspace files";
+}
+
+std::vector<std::string> SymbolTableHandler::GetTopModules() {
+  std::vector<std::string> top_modules;
+  if (!symbol_table_) return top_modules;
+
+  Prepare();
+
+  const SymbolTableNode &root = symbol_table_->Root();
+
+  // Collect all defined modules.
+  std::set<std::string_view> defined_modules;
+  for (const auto &child : root.Children()) {
+    if (child.second.Value().metatype == SymbolMetaType::kModule) {
+      defined_modules.insert(child.first);
+    }
+  }
+
+  // Collect all instantiated modules by scanning references.
+  std::set<std::string_view> instantiated_modules;
+  root.ApplyPreOrder([&instantiated_modules](const SymbolTableNode &node) {
+    const SymbolInfo &symbol_info(node.Value());
+    for (const DependentReferences &ref : symbol_info.local_references_to_bind) {
+      if (ref.components == nullptr) continue;
+      const ReferenceComponent &ref_comp(ref.components->Value());
+      // Check if this reference is to a module (for instantiation).
+      if (ref_comp.required_metatype == SymbolMetaType::kModule ||
+          ref_comp.required_metatype == SymbolMetaType::kUnspecified) {
+        // If resolved, check if it's actually a module.
+        if (ref_comp.resolved_symbol != nullptr) {
+          if (ref_comp.resolved_symbol->Value().metatype ==
+              SymbolMetaType::kModule) {
+            instantiated_modules.insert(ref_comp.identifier);
+          }
+        } else {
+          // Unresolved - could be a module instantiation.
+          instantiated_modules.insert(ref_comp.identifier);
+        }
+      }
+    }
+  });
+
+  // Top modules = defined modules - instantiated modules.
+  for (const auto &module : defined_modules) {
+    if (instantiated_modules.find(module) == instantiated_modules.end()) {
+      top_modules.push_back(std::string(module));
+    }
+  }
+
+  VLOG(1) << "Detected " << top_modules.size() << " top-level modules";
+  return top_modules;
 }
 
 };  // namespace verilog

@@ -91,6 +91,11 @@ class SymbolTableHandler {
   // Creates a symbol table for entire project (public: needed in unit-test)
   std::vector<absl::Status> BuildProjectSymbolTable();
 
+  // Returns a list of top-level module names in the project.
+  // A top-level module is one that is defined but never instantiated.
+  // This is useful for GJB 10157 R-2-10 rule (checking floating inputs).
+  std::vector<std::string> GetTopModules();
+
   // Provide new parsed content for the given path. If "content" is nullptr,
   // opens the given file instead.
   void UpdateFileContent(std::string_view path,
@@ -99,6 +104,13 @@ class SymbolTableHandler {
   // Create a listener to be wired up to a buffer tracker. Whenever we
   // there is a change in the editor, this will update our internal project.
   BufferTrackerContainer::ChangeCallback CreateBufferTrackerListener();
+
+  // Updates FLAGS_top_modules based on current symbol table analysis.
+  void UpdateTopModulesFlag();
+
+  // Set workspace files received from the client (e.g., DUDUlinter plugin).
+  // These files will be used instead of verible.filelist when available.
+  void SetWorkspaceFiles(const std::vector<std::string> &files);
 
  private:
   // prepares structures for symbol-based requests

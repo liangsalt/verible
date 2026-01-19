@@ -210,7 +210,12 @@ struct LintViolationWithStatus {
 
   bool operator<(const LintViolationWithStatus &r) const {
     // compares addresses which correspond to locations within the same string
-    return violation->token.text().data() < r.violation->token.text().data();
+    // If same token, compare rule names to allow multiple rules to report
+    // violations on the same token
+    if (violation->token.text().data() != r.violation->token.text().data()) {
+      return violation->token.text().data() < r.violation->token.text().data();
+    }
+    return status->lint_rule_name < r.status->lint_rule_name;
   }
 };
 

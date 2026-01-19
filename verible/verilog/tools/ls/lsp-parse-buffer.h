@@ -54,6 +54,10 @@ class ParsedBuffer {
     return lint_statuses_;
   }
 
+  // Re-run the linter with current configuration.
+  // This is useful when global state (like top modules) changes.
+  void ReLint() const;
+
   int64_t version() const { return version_; }
   const std::string &uri() const { return uri_; }
 
@@ -61,7 +65,8 @@ class ParsedBuffer {
   const int64_t version_;
   const std::string uri_;
   const std::unique_ptr<verilog::VerilogAnalyzer> parser_;
-  std::vector<verible::LintRuleStatus> lint_statuses_;
+  // Mutable to allow re-linting when global configuration changes.
+  mutable std::vector<verible::LintRuleStatus> lint_statuses_;
 };
 
 // A buffer tracker tracks of a single file EditTextBuffer content and stores
@@ -141,6 +146,12 @@ class BufferTrackerContainer {
 
   // Given the URI, find the associated parse buffer if it exists.
   const BufferTracker *FindBufferTrackerOrNull(const std::string &uri) const;
+
+  // Get all tracked URIs.
+  std::vector<std::string> GetAllUris() const;
+
+  // Re-lint all tracked buffers. Used when global state changes.
+  void ReLintAll();
 
  private:
   // Update internal state of the given "uri" with the content of the text

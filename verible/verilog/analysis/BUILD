@@ -14,6 +14,16 @@ package(
 )
 
 cc_library(
+    name = "top-modules-flag",
+    srcs = ["top-modules-flag.cc"],
+    hdrs = ["top-modules-flag.h"],
+    deps = [
+        "@abseil-cpp//absl/flags:flag",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "default-rules",
     hdrs = ["default-rules.h"],
     deps = [

@@ -64,6 +64,12 @@ ParsedBuffer::ParsedBuffer(int64_t version, std::string_view uri,
   }
 }
 
+void ParsedBuffer::ReLint() const {
+  if (auto lint_result = RunLinter(uri_, *parser_); lint_result.ok()) {
+    lint_statuses_ = std::move(lint_result.value());
+  }
+}
+
 void BufferTracker::Update(const std::string &uri,
                            const verible::lsp::EditTextBuffer &txt) {
   if (current_ && current_->version() == txt.last_global_version()) {
@@ -122,5 +128,22 @@ const BufferTracker *BufferTrackerContainer::FindBufferTrackerOrNull(
   auto found = buffers_.find(uri);
   if (found == buffers_.end()) return nullptr;
   return found->second.get();
+}
+
+std::vector<std::string> BufferTrackerContainer::GetAllUris() const {
+  std::vector<std::string> uris;
+  uris.reserve(buffers_.size());
+  for (const auto &[uri, tracker] : buffers_) {
+    uris.push_back(uri);
+  }
+  return uris;
+}
+
+void BufferTrackerContainer::ReLintAll() {
+  for (const auto &[uri, tracker] : buffers_) {
+    if (tracker && tracker->current()) {
+      tracker->current()->ReLint();
+    }
+  }
 }
 }  // namespace verilog

@@ -34,7 +34,9 @@
 #include "verible/verilog/CST/declaration.h"
 #include "verible/verilog/CST/functions.h"
 #include "verible/verilog/CST/module.h"
+#include "verible/verilog/CST/net.h"
 #include "verible/verilog/CST/package.h"
+#include "verible/verilog/CST/port.h"
 #include "verible/verilog/CST/tasks.h"
 #include "verible/verilog/CST/verilog-matchers.h"
 #include "verible/verilog/CST/verilog-nonterminals.h"
@@ -148,6 +150,30 @@ void Gjb10157R26Rule::Lint(const verible::TextStructureView &text_structure,
     const auto *name = GetInstanceNameTokenInfoFromRegisterVariable(*match.match);
     if (name != nullptr) {
       add_identifier(name, match.context);
+    }
+  }
+
+  // Find all net/wire variables (wire, tri, etc.)
+  for (const auto &match : SearchSyntaxTree(*tree, NodekNetVariable())) {
+    const auto *name_leaf = GetNameLeafOfNetVariable(*match.match);
+    if (name_leaf != nullptr) {
+      add_identifier(&name_leaf->get(), match.context);
+    }
+  }
+
+  // Find all module port declarations (non-ANSI style)
+  for (const auto &match : SearchSyntaxTree(*tree, NodekModulePortDeclaration())) {
+    const auto *name_leaf = GetIdentifierFromModulePortDeclaration(*match.match);
+    if (name_leaf != nullptr) {
+      add_identifier(&name_leaf->get(), match.context);
+    }
+  }
+
+  // Find all port declarations (ANSI style)
+  for (const auto &match : SearchSyntaxTree(*tree, NodekPortDeclaration())) {
+    const auto *name_leaf = GetIdentifierFromPortDeclaration(*match.match);
+    if (name_leaf != nullptr) {
+      add_identifier(&name_leaf->get(), match.context);
     }
   }
 

@@ -14,6 +14,7 @@
 
 #include <iostream>
 #include <memory>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -24,6 +25,7 @@
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "verible/common/strings/compare.h"
 #include "verible/common/util/init-command-line.h"
 #include "verible/common/util/logging.h"
 #include "verible/common/util/status-macros.h"
@@ -250,6 +252,94 @@ static absl::Status ShowFileDependencies(const SubcommandArgsRange &args,
   return absl::OkStatus();
 }
 
+// Finds modules that are defined but never instantiated by other modules.
+// These are the "top-level" modules in the project.
+static absl::Status ShowTopModules(const SubcommandArgsRange &args,
+                                   std::istream &ins, std::ostream &outs,
+                                   std::ostream &errs) {
+  VLOG(1) << __FUNCTION__;
+  // Load configuration.
+  VerilogProjectConfig config;
+  RETURN_IF_ERROR(config.LoadFromCommandline(args));
+
+  // Load project and files.
+  ProjectSymbols project_symbols(config);
+  RETURN_IF_ERROR(project_symbols.Load());
+
+  // Build symbol table.
+  std::vector<absl::Status> statuses;
+  project_symbols.Build(&statuses);
+
+  // Accumulate diagnostics (non-fatal for this operation).
+  if (!statuses.empty()) {
+    for (const auto &status : statuses) {
+      errs << "Warning: " << status.message() << std::endl;
+    }
+  }
+
+  // Partially resolve symbols to find module instantiations.
+  project_symbols.symbol_table->ResolveLocallyOnly();
+
+  const auto &root = project_symbols.symbol_table->Root();
+
+  // Collect all defined modules.
+  std::set<std::string_view, verible::StringViewCompare> defined_modules;
+  for (const auto &child : root) {
+    if (child.second.Value().metatype == verilog::SymbolMetaType::kModule) {
+      defined_modules.insert(child.first);
+    }
+  }
+
+  // Collect all instantiated modules by scanning references.
+  std::set<std::string_view, verible::StringViewCompare> instantiated_modules;
+  root.ApplyPreOrder([&instantiated_modules](const verilog::SymbolTableNode &node) {
+    const verilog::SymbolInfo &symbol_info(node.Value());
+    for (const verilog::DependentReferences &ref :
+         symbol_info.local_references_to_bind) {
+      if (ref.components == nullptr) continue;
+      const verilog::ReferenceComponent &ref_comp(ref.components->Value());
+      // Check if this reference is to a module (for instantiation).
+      if (ref_comp.required_metatype == verilog::SymbolMetaType::kModule ||
+          ref_comp.required_metatype == verilog::SymbolMetaType::kUnspecified) {
+        // If resolved, check if it's actually a module.
+        if (ref_comp.resolved_symbol != nullptr) {
+          if (ref_comp.resolved_symbol->Value().metatype ==
+              verilog::SymbolMetaType::kModule) {
+            instantiated_modules.insert(ref_comp.identifier);
+          }
+        } else {
+          // Unresolved - could be a module instantiation.
+          // Include it if it matches a defined module name.
+          instantiated_modules.insert(ref_comp.identifier);
+        }
+      }
+    }
+  });
+
+  // Top modules = defined modules - instantiated modules.
+  std::vector<std::string_view> top_modules;
+  for (const auto &module : defined_modules) {
+    if (instantiated_modules.find(module) == instantiated_modules.end()) {
+      top_modules.push_back(module);
+    }
+  }
+
+  // Output results.
+  if (top_modules.empty()) {
+    outs << "No top-level modules found." << std::endl;
+  } else {
+    outs << "Top-level modules:" << std::endl;
+    for (const auto &module : top_modules) {
+      outs << "  " << module << std::endl;
+    }
+    // Also output in machine-readable format (comma-separated).
+    outs << std::endl << "Machine-readable format:" << std::endl;
+    outs << absl::StrJoin(top_modules, ",") << std::endl;
+  }
+
+  return absl::OkStatus();
+}
+
 static const std::pair<std::string_view, SubcommandEntry> kCommands[] = {
     {"symbol-table-defs",        //
      {&BuildAndShowSymbolTable,  //
@@ -278,6 +368,22 @@ Project options, including source file list.
 Prints human-readable representation of inter-file dependencies, e.g.
 
   "file1.sv" depends on "file2.sv" for symbols { X, Y, Z... }
+
+Input:
+Project options, including source file list.
+)"}},
+    {"top-modules",       //
+     {&ShowTopModules,    //
+      R"(top-modules [project args]
+
+Identifies and prints top-level modules in the project.
+A top-level module is one that is defined but never instantiated by other modules.
+
+This is useful for:
+  - Identifying design hierarchy roots
+  - GJB 10157 R-2-10 rule (checking for floating inputs on top modules)
+
+Output includes both human-readable and machine-readable (comma-separated) formats.
 
 Input:
 Project options, including source file list.

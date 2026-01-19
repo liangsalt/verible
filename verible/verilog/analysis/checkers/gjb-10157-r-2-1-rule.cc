@@ -32,7 +32,9 @@
 #include "verible/verilog/CST/declaration.h"
 #include "verible/verilog/CST/functions.h"
 #include "verible/verilog/CST/module.h"
+#include "verible/verilog/CST/net.h"
 #include "verible/verilog/CST/package.h"
+#include "verible/verilog/CST/port.h"
 #include "verible/verilog/CST/tasks.h"
 #include "verible/verilog/CST/verilog-matchers.h"
 #include "verible/verilog/CST/verilog-nonterminals.h"
@@ -151,12 +153,36 @@ void Gjb10157R21Rule::Lint(const verible::TextStructureView &text_structure,
     }
   }
 
-  // Check variable/signal names (register variables)
+  // Check variable/signal names (register variables: reg, logic, etc.)
   for (const auto &match : SearchSyntaxTree(*tree, NodekRegisterVariable())) {
     const auto *name_token =
         GetInstanceNameTokenInfoFromRegisterVariable(*match.match);
     if (name_token != nullptr) {
       check_identifier(*name_token, match.context, "Variable");
+    }
+  }
+
+  // Check net/wire names (wire, tri, etc.)
+  for (const auto &match : SearchSyntaxTree(*tree, NodekNetVariable())) {
+    const auto *name_leaf = GetNameLeafOfNetVariable(*match.match);
+    if (name_leaf != nullptr) {
+      check_identifier(name_leaf->get(), match.context, "Wire");
+    }
+  }
+
+  // Check module port declarations (non-ANSI style: module foo(a); input a;)
+  for (const auto &match : SearchSyntaxTree(*tree, NodekModulePortDeclaration())) {
+    const auto *name_leaf = GetIdentifierFromModulePortDeclaration(*match.match);
+    if (name_leaf != nullptr) {
+      check_identifier(name_leaf->get(), match.context, "Port");
+    }
+  }
+
+  // Check port declarations (ANSI style: module foo(input a);)
+  for (const auto &match : SearchSyntaxTree(*tree, NodekPortDeclaration())) {
+    const auto *name_leaf = GetIdentifierFromPortDeclaration(*match.match);
+    if (name_leaf != nullptr) {
+      check_identifier(name_leaf->get(), match.context, "Port");
     }
   }
 

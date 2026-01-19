@@ -17,6 +17,7 @@ cc_binary(
     features = STATIC_EXECUTABLES_FEATURE,
     visibility = ["//:__subpackages__"],
     deps = [
+        "//verible/common/strings:compare",
         "//verible/common/util:init-command-line",
         "//verible/common/util:logging",
         "//verible/common/util:status-macros",

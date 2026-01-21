@@ -93,7 +93,7 @@ inline constexpr const char* kDefaultRuleSet[] = {
 //   Update integration tests for rulesets.
 // clang-format on
 
-// GJB 10157 ruleset - includes all GJB rules plus selected coding rules
+// GJB 10157 ruleset - includes all GJB rules (pure Verilog compatible)
 // Use --ruleset gjb
 // clang-format off
 inline constexpr const char* kGJBRuleSet[] = {
@@ -110,9 +110,8 @@ inline constexpr const char* kGJBRuleSet[] = {
     "GJB-10157-R-2-10",
     // GJB 10157 Advisory rules (A-2-x) - warning severity
     "GJB-10157-A-2-1",
-    // Additional coding style rules
-    "always-comb",
-    "always-comb-blocking",
+    // Note: always-comb and always-comb-blocking are NOT included
+    // because they are SystemVerilog-only rules (always_comb keyword)
     // Note: explicit-parameter-storage-type, parameter-name-style,
     // and instance-shadowing are intentionally NOT included (disabled)
 };

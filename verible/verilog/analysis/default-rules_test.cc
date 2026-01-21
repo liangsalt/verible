@@ -29,6 +29,14 @@ TEST(DefaultRuleTest, AllDefaultValid) {
   }
 }
 
+// Test that rules in the GJB set are all registered.
+TEST(DefaultRuleTest, AllGJBValid) {
+  for (const auto &rule_id : kGJBRuleSet) {
+    EXPECT_TRUE(IsRegisteredLintRule(rule_id))
+        << "Registry is missing rule_id: " << rule_id;
+  }
+}
+
 }  // namespace
 }  // namespace analysis
 }  // namespace verilog

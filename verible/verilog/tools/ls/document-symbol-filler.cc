@@ -27,6 +27,7 @@
 #include "verible/verilog/CST/functions.h"
 #include "verible/verilog/CST/module.h"
 #include "verible/verilog/CST/package.h"
+#include "verible/verilog/CST/port.h"
 #include "verible/verilog/CST/seq-block.h"
 #include "verible/verilog/CST/verilog-nonterminals.h"
 #include "verible/verilog/tools/ls/lsp-conversion.h"
@@ -155,6 +156,25 @@ void DocumentSymbolFiller::Visit(const verible::SyntaxTreeNode &node) {
         node_symbol.kind = verible::lsp::SymbolKind::kFunction;
         node_symbol.selectionRange = RangeFromToken(function_name->get());
         node_symbol.name = std::string(function_name->get().text());
+      }
+      break;
+    }
+
+    // Port declarations - expose ports as Field symbols
+    case verilog::NodeEnum::kPortDeclaration: {
+      const auto *port_name = verilog::GetIdentifierFromPortDeclaration(node);
+      if (port_name) {
+        is_visible_node = true;
+        node_symbol.kind = verible::lsp::SymbolKind::kField;
+        node_symbol.selectionRange = RangeFromToken(port_name->get());
+        // Get direction prefix for the port name
+        const auto *direction = verilog::GetDirectionFromPortDeclaration(node);
+        if (direction) {
+          node_symbol.name = std::string(direction->get().text()) + " " +
+                             std::string(port_name->get().text());
+        } else {
+          node_symbol.name = std::string(port_name->get().text());
+        }
       }
       break;
     }

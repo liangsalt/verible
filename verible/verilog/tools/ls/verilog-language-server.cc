@@ -186,6 +186,32 @@ void VerilogLanguageServer::SetRequestHandlers() {
         return CreateHoverInformation(&symbol_table_handler_, parsed_buffers_,
                                       p);
       });
+  // Custom request: Get module ports information
+  dispatcher_.AddRequestHandler(
+      "verilog/getModulePorts",
+      [this](const nlohmann::json &params) {
+        std::string uri;
+        if (params.contains("textDocument") &&
+            params["textDocument"].contains("uri")) {
+          uri = params["textDocument"]["uri"].get<std::string>();
+        }
+        return verilog::GetModulePorts(
+            parsed_buffers_.FindBufferTrackerOrNull(uri), uri);
+      });
+
+  // Custom request: Get comprehensive module information (name, range, ports, parameters, instantiations)
+  dispatcher_.AddRequestHandler(
+      "verilog/getModuleInfo",
+      [this](const nlohmann::json &params) {
+        std::string uri;
+        if (params.contains("textDocument") &&
+            params["textDocument"].contains("uri")) {
+          uri = params["textDocument"]["uri"].get<std::string>();
+        }
+        return verilog::GetModuleInfo(
+            parsed_buffers_.FindBufferTrackerOrNull(uri), uri);
+      });
+
   // The client sends a request to shut down. Use that to exit our loop.
   dispatcher_.AddRequestHandler("shutdown", [this](const nlohmann::json &) {
     shutdown_requested_ = true;

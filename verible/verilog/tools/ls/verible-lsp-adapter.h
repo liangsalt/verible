@@ -67,5 +67,20 @@ std::vector<verible::lsp::TextEdit> FormatRange(
     const BufferTracker *tracker,
     const verible::lsp::DocumentFormattingParams &p);
 
+// Get module ports information for a document
+// Returns JSON with modules and their ports (name, direction, width)
+nlohmann::json GetModulePorts(const BufferTracker *tracker,
+                               const std::string &uri);
+
+// Get comprehensive module information for a document
+// Returns JSON with modules including:
+// - name: module name
+// - range: {start: {line, character}, end: {line, character}}
+// - ports: [{name, direction, width}, ...]
+// - parameters: [{name, value, type}, ...]
+// - instantiations: [{moduleName, instanceName, line}, ...]
+nlohmann::json GetModuleInfo(const BufferTracker *tracker,
+                              const std::string &uri);
+
 }  // namespace verilog
 #endif  // VERILOG_TOOLS_LS_VERIBLE_LSP_ADAPTER_H

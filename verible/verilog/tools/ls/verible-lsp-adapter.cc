@@ -24,13 +24,23 @@
 #include "nlohmann/json.hpp"
 #include "verible/common/analysis/file-analyzer.h"
 #include "verible/common/analysis/lint-rule-status.h"
+#include "verible/common/analysis/syntax-tree-search.h"
 #include "verible/common/lsp/lsp-protocol-enums.h"
 #include "verible/common/lsp/lsp-protocol-operators.h"
 #include "verible/common/lsp/lsp-protocol.h"
 #include "verible/common/strings/line-column-map.h"
+#include "verible/common/text/concrete-syntax-tree.h"
+#include "verible/common/text/symbol.h"
 #include "verible/common/text/text-structure.h"
 #include "verible/common/text/token-info.h"
+#include "verible/common/text/tree-utils.h"
 #include "verible/common/util/interval.h"
+#include "verible/verilog/CST/declaration.h"
+#include "verible/verilog/CST/dimensions.h"
+#include "verible/verilog/CST/module.h"
+#include "verible/verilog/CST/parameters.h"
+#include "verible/verilog/CST/port.h"
+#include "verible/verilog/CST/verilog-nonterminals.h"
 #include "verible/verilog/analysis/verilog-analyzer.h"
 #include "verible/verilog/analysis/verilog-linter.h"
 #include "verible/verilog/formatting/format-style-init.h"
@@ -330,6 +340,369 @@ std::vector<verible::lsp::TextEdit> FormatRange(
             },
         .newText = newText});
   }
+  return result;
+}
+
+// Helper function to extract width string from a symbol (expression or number)
+static std::string ExtractExpressionText(const verible::Symbol *symbol,
+                                         const verible::TextStructureView &text) {
+  if (!symbol) return "";
+
+  // Get the text range for this symbol and extract the actual text
+  const auto &content = text.Contents();
+
+  // For leaf nodes, get the text directly
+  if (symbol->Kind() == verible::SymbolKind::kLeaf) {
+    const auto &leaf = verible::SymbolCastToLeaf(*symbol);
+    return std::string(leaf.get().text());
+  }
+
+  // For node, try to reconstruct from children
+  const auto &node = verible::SymbolCastToNode(*symbol);
+  std::string result;
+  for (const auto &child : node.children()) {
+    if (child) {
+      result += ExtractExpressionText(child.get(), text);
+    }
+  }
+  return result;
+}
+
+// Helper to get packed dimensions string from a port declaration
+static std::string GetPackedDimensionsFromPortDeclaration(
+    const verible::Symbol &port_decl, const verible::TextStructureView &text) {
+  // Port declaration structure:
+  // Index 0: Direction (input/output/inout)
+  // Index 1: Net type or data type info
+  // Index 2: Data type (may contain packed dimensions)
+  // Index 3: Identifier
+
+  const auto *data_type = verible::GetSubtreeAsSymbol(
+      port_decl, NodeEnum::kPortDeclaration, 2);
+
+  if (!data_type) {
+    // Try index 1 for some port declaration formats
+    data_type = verible::GetSubtreeAsSymbol(
+        port_decl, NodeEnum::kPortDeclaration, 1);
+  }
+
+  if (!data_type) return "1";
+
+  // Search for packed dimensions within the data type
+  auto packed_dims = verilog::FindAllPackedDimensions(*data_type);
+  if (packed_dims.empty()) return "1";
+
+  // Get the dimension range
+  for (const auto &dim : packed_dims) {
+    auto decl_dims = verilog::FindAllDeclarationDimensions(*dim.match);
+    for (const auto &decl_dim : decl_dims) {
+      // Find kDimensionRange nodes
+      const auto *node = &verible::SymbolCastToNode(*decl_dim.match);
+      for (const auto &child : node->children()) {
+        if (!child) continue;
+        if (child->Kind() != verible::SymbolKind::kNode) continue;
+        const auto &child_node = verible::SymbolCastToNode(*child);
+        if (child_node.MatchesTag(NodeEnum::kDimensionRange)) {
+          // Extract [high:low] format
+          const auto *left = verilog::GetDimensionRangeLeftBound(*child);
+          const auto *right = verilog::GetDimensionRangeRightBound(*child);
+          if (left && right) {
+            std::string left_str = ExtractExpressionText(left, text);
+            std::string right_str = ExtractExpressionText(right, text);
+            return "[" + left_str + ":" + right_str + "]";
+          }
+        }
+      }
+    }
+  }
+
+  return "1";
+}
+
+nlohmann::json GetModulePorts(const BufferTracker *tracker,
+                               const std::string &uri) {
+  nlohmann::json result = nlohmann::json::array();
+
+  if (!tracker) return result;
+
+  const auto last_good = tracker->last_good();
+  if (!last_good) return result;
+
+  const auto &text_structure = last_good->parser().Data();
+  const auto &syntax_tree = text_structure.SyntaxTree();
+  if (!syntax_tree) return result;
+
+  // Find all module declarations
+  auto modules = verilog::FindAllModuleDeclarations(*syntax_tree);
+
+  for (const auto &module_match : modules) {
+    const verible::Symbol *module_symbol = module_match.match;
+    nlohmann::json module_json;
+
+    // Get module name
+    const auto *module_name_leaf = verilog::GetModuleName(*module_symbol);
+    if (!module_name_leaf) continue;
+
+    module_json["name"] = std::string(module_name_leaf->get().text());
+    module_json["ports"] = nlohmann::json::array();
+
+    // Get port declaration list
+    const auto *port_list = verilog::GetModulePortDeclarationList(*module_symbol);
+    if (port_list) {
+      // ANSI-style ports in declaration list
+      auto port_decls = verilog::FindAllPortDeclarations(*port_list);
+      for (const auto &port_match : port_decls) {
+        nlohmann::json port_json;
+
+        // Get port name
+        const auto *port_name = verilog::GetIdentifierFromPortDeclaration(
+            *port_match.match);
+        if (!port_name) continue;
+
+        port_json["name"] = std::string(port_name->get().text());
+
+        // Get port direction
+        const auto *direction = verilog::GetDirectionFromPortDeclaration(
+            *port_match.match);
+        if (direction) {
+          port_json["direction"] = std::string(direction->get().text());
+        } else {
+          port_json["direction"] = "input";  // default
+        }
+
+        // Get port width
+        port_json["width"] = GetPackedDimensionsFromPortDeclaration(
+            *port_match.match, text_structure);
+
+        module_json["ports"].push_back(port_json);
+      }
+    }
+
+    // Also check module port paren group for ports
+    const auto *port_paren = verilog::GetModulePortParenGroup(*module_symbol);
+    if (port_paren && module_json["ports"].empty()) {
+      // Try to find port declarations directly in the paren group
+      auto port_decls = verilog::FindAllPortDeclarations(*port_paren);
+      for (const auto &port_match : port_decls) {
+        nlohmann::json port_json;
+
+        const auto *port_name = verilog::GetIdentifierFromPortDeclaration(
+            *port_match.match);
+        if (!port_name) continue;
+
+        port_json["name"] = std::string(port_name->get().text());
+
+        const auto *direction = verilog::GetDirectionFromPortDeclaration(
+            *port_match.match);
+        if (direction) {
+          port_json["direction"] = std::string(direction->get().text());
+        } else {
+          port_json["direction"] = "input";
+        }
+
+        port_json["width"] = GetPackedDimensionsFromPortDeclaration(
+            *port_match.match, text_structure);
+
+        module_json["ports"].push_back(port_json);
+      }
+
+      // Also check for non-ANSI port references
+      if (module_json["ports"].empty()) {
+        auto port_refs = verilog::FindAllPortReferences(*port_paren);
+        for (const auto &port_ref : port_refs) {
+          const auto *port_ref_node = verilog::GetPortReferenceFromPort(
+              *port_ref.match);
+          if (!port_ref_node) continue;
+
+          const auto *port_name = verilog::GetIdentifierFromPortReference(
+              *port_ref_node);
+          if (!port_name) continue;
+
+          nlohmann::json port_json;
+          port_json["name"] = std::string(port_name->get().text());
+          port_json["direction"] = "unknown";  // Non-ANSI style
+          port_json["width"] = "1";
+
+          module_json["ports"].push_back(port_json);
+        }
+      }
+    }
+
+    result.push_back(module_json);
+  }
+
+  return result;
+}
+
+nlohmann::json GetModuleInfo(const BufferTracker *tracker,
+                              const std::string &uri) {
+  nlohmann::json result = nlohmann::json::array();
+
+  if (!tracker) return result;
+
+  const auto last_good = tracker->last_good();
+  if (!last_good) return result;
+
+  const auto &text_structure = last_good->parser().Data();
+  const auto &syntax_tree = text_structure.SyntaxTree();
+  if (!syntax_tree) return result;
+
+  const auto &line_column_map = text_structure.GetLineColumnMap();
+
+  // Find all module declarations
+  auto modules = verilog::FindAllModuleDeclarations(*syntax_tree);
+
+  for (const auto &module_match : modules) {
+    const verible::Symbol *module_symbol = module_match.match;
+    nlohmann::json module_json;
+
+    // Get module name
+    const auto *module_name_leaf = verilog::GetModuleName(*module_symbol);
+    if (!module_name_leaf) continue;
+
+    module_json["name"] = std::string(module_name_leaf->get().text());
+
+    // Get module range
+    const auto &module_token = module_name_leaf->get();
+    const auto &content = text_structure.Contents();
+    const auto module_start = line_column_map.GetLineColAtOffset(
+        content, module_token.left(content));
+
+    // Find endmodule position by traversing the tree
+    // For now, use the module declaration span
+    auto module_range = verible::StringSpanOfSymbol(*module_symbol);
+    const int end_offset = module_range.data() + module_range.length() - content.data();
+    const auto module_end = line_column_map.GetLineColAtOffset(content, end_offset);
+
+    module_json["range"] = {
+        {"start", {{"line", module_start.line}, {"character", module_start.column}}},
+        {"end", {{"line", module_end.line}, {"character", module_end.column}}}
+    };
+
+    // Get ports (reuse existing logic)
+    module_json["ports"] = nlohmann::json::array();
+    const auto *port_list = verilog::GetModulePortDeclarationList(*module_symbol);
+    if (port_list) {
+      auto port_decls = verilog::FindAllPortDeclarations(*port_list);
+      for (const auto &port_match : port_decls) {
+        nlohmann::json port_json;
+        const auto *port_name = verilog::GetIdentifierFromPortDeclaration(*port_match.match);
+        if (!port_name) continue;
+
+        port_json["name"] = std::string(port_name->get().text());
+        const auto *direction = verilog::GetDirectionFromPortDeclaration(*port_match.match);
+        port_json["direction"] = direction ? std::string(direction->get().text()) : "input";
+        port_json["width"] = GetPackedDimensionsFromPortDeclaration(*port_match.match, text_structure);
+        module_json["ports"].push_back(port_json);
+      }
+    }
+
+    // Also check module port paren group
+    const auto *port_paren = verilog::GetModulePortParenGroup(*module_symbol);
+    if (port_paren && module_json["ports"].empty()) {
+      auto port_decls = verilog::FindAllPortDeclarations(*port_paren);
+      for (const auto &port_match : port_decls) {
+        nlohmann::json port_json;
+        const auto *port_name = verilog::GetIdentifierFromPortDeclaration(*port_match.match);
+        if (!port_name) continue;
+
+        port_json["name"] = std::string(port_name->get().text());
+        const auto *direction = verilog::GetDirectionFromPortDeclaration(*port_match.match);
+        port_json["direction"] = direction ? std::string(direction->get().text()) : "input";
+        port_json["width"] = GetPackedDimensionsFromPortDeclaration(*port_match.match, text_structure);
+        module_json["ports"].push_back(port_json);
+      }
+    }
+
+    // Get parameters
+    module_json["parameters"] = nlohmann::json::array();
+    auto param_decls = verilog::FindAllParamDeclarations(*module_symbol);
+    for (const auto &param_match : param_decls) {
+      nlohmann::json param_json;
+
+      // Get parameter keyword (parameter or localparam)
+      auto param_keyword = verilog::GetParamKeyword(*param_match.match);
+      param_json["type"] = (param_keyword == verilog_tokentype::TK_localparam) ? "localparam" : "parameter";
+
+      // Get parameter name
+      const auto *param_name_token = verilog::GetParameterNameToken(*param_match.match);
+      if (!param_name_token) continue;
+      param_json["name"] = std::string(param_name_token->text());
+
+      // Get parameter value expression
+      const auto *param_expr = verilog::GetParamAssignExpression(*param_match.match);
+      if (param_expr) {
+        auto expr_span = verible::StringSpanOfSymbol(*param_expr);
+        param_json["value"] = std::string(expr_span);
+      } else {
+        param_json["value"] = "";
+      }
+
+      // Get parameter position
+      const auto param_pos = line_column_map.GetLineColAtOffset(
+          content, param_name_token->left(content));
+      param_json["line"] = param_pos.line;
+
+      module_json["parameters"].push_back(param_json);
+    }
+
+    // Get instantiations
+    module_json["instantiations"] = nlohmann::json::array();
+
+    // Get module item list (body of module)
+    const auto *module_items = verilog::GetModuleItemList(*module_symbol);
+    if (module_items) {
+      auto data_decls = verilog::FindAllDataDeclarations(*module_items);
+      for (const auto &data_match : data_decls) {
+        // Get instantiation type (the module being instantiated)
+        const auto *inst_type = verilog::GetInstantiationTypeOfDataDeclaration(*data_match.match);
+        if (!inst_type) continue;
+
+        // Get the type identifier (module name)
+        const auto *type_id = verilog::GetTypeIdentifierFromDataDeclaration(*data_match.match);
+        if (!type_id) continue;
+
+        auto type_span = verible::StringSpanOfSymbol(*type_id);
+        std::string module_type_name(type_span);
+
+        // Skip if it looks like a built-in type
+        if (module_type_name == "reg" || module_type_name == "wire" ||
+            module_type_name == "logic" || module_type_name == "integer" ||
+            module_type_name == "real" || module_type_name == "time") {
+          continue;
+        }
+
+        // Get instance list
+        const auto *inst_list = verilog::GetInstanceListFromDataDeclaration(*data_match.match);
+        if (!inst_list) continue;
+
+        auto gate_instances = verilog::FindAllGateInstances(*inst_list);
+        for (const auto &gate_match : gate_instances) {
+          nlohmann::json inst_json;
+          inst_json["moduleName"] = module_type_name;
+
+          // Get instance name
+          const auto *inst_name_token = verilog::GetModuleInstanceNameTokenInfoFromGateInstance(*gate_match.match);
+          if (inst_name_token) {
+            inst_json["instanceName"] = std::string(inst_name_token->text());
+
+            // Get instance position
+            const auto inst_pos = line_column_map.GetLineColAtOffset(
+                content, inst_name_token->left(content));
+            inst_json["line"] = inst_pos.line;
+          } else {
+            inst_json["instanceName"] = "";
+            inst_json["line"] = 0;
+          }
+
+          module_json["instantiations"].push_back(inst_json);
+        }
+      }
+    }
+
+    result.push_back(module_json);
+  }
+
   return result;
 }
 

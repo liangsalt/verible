@@ -74,7 +74,7 @@ ABSL_FLAG(bool, rules_config_search, true,
           "Look for lint rules configuration file '.rules.verible_lint' "
           "searching upward from the location of each analyzed file.");
 ABSL_FLAG(verilog::RuleSet, ruleset, verilog::RuleSet::kDefault,
-          "[default|all|none], the base set of rules used by linter");
+          "[default|all|none|gjb], the base set of rules used by linter");
 ABSL_FLAG(std::string, waiver_files, "",
           "Path to waiver config files (comma-separated). "
           "Please refer to the README file for information about its format.");

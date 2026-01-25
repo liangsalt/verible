@@ -25,7 +25,8 @@
       "Bash(\"/c/Users/ASUS/Desktop/lll/verible/bazel-bin/verible/verilog/tools/lint/verible-verilog-lint.exe\" --help_rules=GJB-10157-R-2-10)",
       "Bash(\"/c/Users/ASUS/Desktop/lll/verible/bazel-bin/verible/verilog/tools/lint/verible-verilog-lint.exe\" --rules=GJB-10157-R-2-10 --top_modules=test_nonansi \"/c/Users/ASUS/Desktop/poi/test_r2_10_nonansi.v\")",
       "Bash(\"/c/Users/ASUS/Desktop/lll/verible/bazel-bin/verible/verilog/tools/lint/verible-verilog-lint.exe\" --rules=GJB-10157-R-2-10 --top_modules=simple_nonansi \"/c/Users/ASUS/Desktop/poi/simple_nonansi.v\")",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(D:/DUDUdev/DUDUlinter/bin/verible/verible-verilog-ls.exe:*)"
     ],
     "deny": [],
     "ask": []

@@ -706,4 +706,23 @@ nlohmann::json GetModuleInfo(const BufferTracker *tracker,
   return result;
 }
 
+nlohmann::json GetAllModuleInfo(const BufferTrackerContainer &parsed_buffers) {
+  nlohmann::json result = nlohmann::json::object();
+
+  // Get all tracked URIs
+  std::vector<std::string> all_uris = parsed_buffers.GetAllUris();
+
+  for (const std::string &uri : all_uris) {
+    const BufferTracker *tracker = parsed_buffers.FindBufferTrackerOrNull(uri);
+    if (tracker) {
+      nlohmann::json module_info = GetModuleInfo(tracker, uri);
+      if (!module_info.empty()) {
+        result[uri] = module_info;
+      }
+    }
+  }
+
+  return result;
+}
+
 }  // namespace verilog

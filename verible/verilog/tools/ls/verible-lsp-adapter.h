@@ -82,5 +82,10 @@ nlohmann::json GetModulePorts(const BufferTracker *tracker,
 nlohmann::json GetModuleInfo(const BufferTracker *tracker,
                               const std::string &uri);
 
+// Get comprehensive module information for ALL indexed files
+// Returns JSON object keyed by URI, each containing an array of module info
+// This is a batch operation to avoid multiple per-file requests
+nlohmann::json GetAllModuleInfo(const BufferTrackerContainer &parsed_buffers);
+
 }  // namespace verilog
 #endif  // VERILOG_TOOLS_LS_VERIBLE_LSP_ADAPTER_H

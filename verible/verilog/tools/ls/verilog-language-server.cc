@@ -212,6 +212,13 @@ void VerilogLanguageServer::SetRequestHandlers() {
             parsed_buffers_.FindBufferTrackerOrNull(uri), uri);
       });
 
+  // Custom request: Get ALL module info from all indexed files (batch operation)
+  dispatcher_.AddRequestHandler(
+      "verilog/getAllModuleInfo",
+      [this](const nlohmann::json &params) {
+        return verilog::GetAllModuleInfo(parsed_buffers_);
+      });
+
   // The client sends a request to shut down. Use that to exit our loop.
   dispatcher_.AddRequestHandler("shutdown", [this](const nlohmann::json &) {
     shutdown_requested_ = true;
@@ -365,6 +372,33 @@ void VerilogLanguageServer::HandleUpdateWorkspaceFiles(
   // Rebuild symbol table and update top modules
   symbol_table_handler_.BuildProjectSymbolTable();
   symbol_table_handler_.UpdateTopModulesFlag();
+
+  // Parse workspace files into parsed_buffers_ so that GetModuleInfo can access them
+  int parsed_count = 0;
+  for (const auto &uri : files) {
+    // Convert URI to file path
+    std::string file_path = verible::lsp::LSPUriToPath(uri);
+    if (file_path.empty()) {
+      LOG(WARNING) << "Could not convert URI to path: " << uri;
+      continue;
+    }
+
+    // Read file content
+    auto content_or = verible::file::GetContentAsString(file_path);
+    if (!content_or.ok()) {
+      LOG(WARNING) << "Could not read file: " << file_path << " - " << content_or.status();
+      continue;
+    }
+
+    // Add to text_buffers_ via didOpenEvent (this triggers parsed_buffers_ update)
+    verible::lsp::DidOpenTextDocumentParams open_params;
+    open_params.textDocument.uri = uri;
+    open_params.textDocument.text = *content_or;
+    text_buffers_.didOpenEvent(open_params);
+    parsed_count++;
+  }
+
+  LOG(INFO) << "Parsed " << parsed_count << " workspace files into buffer";
 
   // Refresh diagnostics for all open files
   RefreshAllDiagnostics();

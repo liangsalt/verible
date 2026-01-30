@@ -53,6 +53,19 @@ using verible::TextStructureLintRule;
 using verible::TokenStreamLintRule;
 using verible::container::FindOrNull;
 
+// Returns true if the file is a testbench file based on filename patterns.
+// Matches: *_tb.sv, *_tb.v, tb_*.sv, tb_*.v, tb.sv, tb.v
+static bool IsTestbenchFile(std::string_view filepath) {
+  auto last_sep = filepath.find_last_of("/\\");
+  auto basename = (last_sep == std::string_view::npos)
+                      ? filepath
+                      : filepath.substr(last_sep + 1);
+  return absl::EndsWithIgnoreCase(basename, "_tb.sv") ||
+         absl::EndsWithIgnoreCase(basename, "_tb.v") ||
+         absl::StartsWithIgnoreCase(basename, "tb_") ||
+         absl::StartsWithIgnoreCase(basename, "tb.");
+}
+
 template <typename List>
 static const char *MatchesAnyItem(std::string_view filename,
                                   const List &items) {
@@ -236,6 +249,11 @@ void LinterConfiguration::UseRuleSet(const RuleSet &rules) {
         TurnOn(rule);
       }
       break;
+    case RuleSet::kGJBSV:
+      for (const auto &rule : analysis::kGJBSVRuleSet) {
+        TurnOn(rule);
+      }
+      break;
   }
 }
 
@@ -363,10 +381,24 @@ absl::Status LinterConfiguration::AppendFromFile(
 
 absl::Status LinterConfiguration::ConfigureFromOptions(
     const LinterOptions &options) {
+  // Skip all lint rules for testbench files.
+  if (IsTestbenchFile(options.linting_start_file)) {
+    UseRuleSet(RuleSet::kNone);
+    return absl::OkStatus();
+  }
+
   // Apply the ruleset bundle first.
   // TODO(b/170876028): reduce the number of ways to select a group of rules,
   // migrate these into hosted project configurations.
-  UseRuleSet(options.ruleset);
+  // When GJB ruleset is selected and the file is SystemVerilog (.sv),
+  // use the GJB-SV ruleset (default minus GJB-10157 rules) to avoid
+  // GJB data type restrictions that conflict with SystemVerilog constructs.
+  RuleSet effective_ruleset = options.ruleset;
+  if (options.ruleset == RuleSet::kGJB &&
+      absl::EndsWithIgnoreCase(options.linting_start_file, ".sv")) {
+    effective_ruleset = RuleSet::kGJBSV;
+  }
+  UseRuleSet(effective_ruleset);
 
   if (!options.config_file.empty()) {
     RETURN_IF_ERROR(AppendFromFile(options.config_file));

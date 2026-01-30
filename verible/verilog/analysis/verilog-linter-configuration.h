@@ -59,7 +59,7 @@ inline constexpr std::string_view kStrayCommaWarning =
 //   kDefault  default ruleset is enabled
 //   kAll      all rules are enabled
 //   kGJB      GJB 10157 ruleset (GJB rules + selected coding rules)
-enum class RuleSet { kNone, kDefault, kAll, kGJB };
+enum class RuleSet { kNone, kDefault, kAll, kGJB, kGJBSV };
 
 // Pair of functions that perform stringification and destringification
 // in order to support commandline flags.

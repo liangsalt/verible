@@ -117,6 +117,48 @@ inline constexpr const char* kGJBRuleSet[] = {
 };
 // clang-format on
 
+// GJB-SV ruleset - used for SystemVerilog (.sv) files when --ruleset gjb.
+// Contains rules appropriate for SystemVerilog, excluding GJB-10157 rules
+// and Verilog-2001 specific rules that conflict with SV constructs.
+// clang-format off
+inline constexpr const char* kGJBSVRuleSet[] = {
+    "invalid-system-task-function",
+    "module-begin-block",
+    "module-parameter",
+    "module-port",
+    "void-cast",
+    "generate-label",
+    "generate-label-prefix",
+    "always-comb",
+    "forbidden-macro",
+    "create-object-name-match",
+    "packed-dimensions-range-ordering",
+    "unpacked-dimensions-range-ordering",
+    "no-trailing-spaces",
+    "no-tabs",
+    "posix-eof",
+    "line-length",
+    "undersized-binary-literal",
+    "explicit-function-task-parameter-type",
+    "plusarg-assignment",
+    "macro-name-style",
+    "typedef-enums",
+    "forbid-defparam",
+    "typedef-structs-unions",
+    "always-comb-blocking",
+    "always-ff-non-blocking",
+    "forbid-consecutive-null-statements",
+    "enum-name-style",
+    "struct-union-name-style",
+    "case-missing-default",
+    "interface-name-style",
+    "positive-meaning-parameter-name",
+    "constraint-name-style",
+    "suggest-parentheses",
+    "truncated-numeric-literal",
+};
+// clang-format on
+
 }  // namespace analysis
 }  // namespace verilog
 

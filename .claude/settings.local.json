@@ -32,7 +32,8 @@
       "WebFetch(domain:opentitan.org)",
       "WebSearch",
       "WebFetch(domain:dvteclipse.com)",
-      "WebFetch(domain:eda.amiq.com)"
+      "WebFetch(domain:eda.amiq.com)",
+      "Bash(if not exist \"D:\\\\DUDUdev\\\\DUDUlinter\\\\bin\\\\verible\" mkdir \"D:\\\\DUDUdev\\\\DUDUlinter\\\\bin\\\\verible\")"
     ],
     "deny": [],
     "ask": []

@@ -695,6 +695,47 @@ nlohmann::json GetModuleInfo(const BufferTracker *tracker,
             inst_json["line"] = 0;
           }
 
+          // Extract port connections
+          inst_json["portConnections"] = nlohmann::json::array();
+          const auto *paren_group = verilog::GetParenGroupFromModuleInstantiation(*gate_match.match);
+          if (paren_group) {
+            auto named_ports = verilog::FindAllActualNamedPort(*paren_group);
+            for (const auto &port_match : named_ports) {
+              nlohmann::json port_conn;
+
+              // Get port name (e.g., "clk" from ".clk(main_clk)")
+              const auto *port_name_leaf = verilog::GetActualNamedPortName(*port_match.match);
+              if (port_name_leaf) {
+                port_conn["childPort"] = std::string(port_name_leaf->get().text());
+
+                // Get connected signal (e.g., "main_clk" from ".clk(main_clk)")
+                const auto *paren_expr = verilog::GetActualNamedPortParenGroup(*port_match.match);
+                if (paren_expr) {
+                  auto signal_span = verible::StringSpanOfSymbol(*paren_expr);
+                  std::string signal_text(signal_span);
+                  // Remove surrounding parentheses
+                  if (signal_text.size() >= 2 && signal_text.front() == '(' && signal_text.back() == ')') {
+                    signal_text = signal_text.substr(1, signal_text.size() - 2);
+                  }
+                  // Trim whitespace
+                  signal_text.erase(0, signal_text.find_first_not_of(" \t\n\r"));
+                  signal_text.erase(signal_text.find_last_not_of(" \t\n\r") + 1);
+                  port_conn["parentSignal"] = signal_text;
+                } else {
+                  // Implicit connection: .clk implies .clk(clk)
+                  port_conn["parentSignal"] = port_conn["childPort"];
+                }
+
+                // Get line number of this connection
+                const auto port_pos = line_column_map.GetLineColAtOffset(
+                    content, port_name_leaf->get().left(content));
+                port_conn["line"] = port_pos.line;
+
+                inst_json["portConnections"].push_back(port_conn);
+              }
+            }
+          }
+
           module_json["instantiations"].push_back(inst_json);
         }
       }

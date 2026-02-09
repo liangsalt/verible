@@ -37,6 +37,7 @@
 #include "verible/common/util/interval.h"
 #include "verible/verilog/CST/declaration.h"
 #include "verible/verilog/CST/dimensions.h"
+#include "verible/verilog/CST/identifier.h"
 #include "verible/verilog/CST/module.h"
 #include "verible/verilog/CST/parameters.h"
 #include "verible/verilog/CST/port.h"
@@ -662,8 +663,11 @@ nlohmann::json GetModuleInfo(const BufferTracker *tracker,
         const auto *type_id = verilog::GetTypeIdentifierFromDataDeclaration(*data_match.match);
         if (!type_id) continue;
 
-        auto type_span = verible::StringSpanOfSymbol(*type_id);
-        std::string module_type_name(type_span);
+        // Use AutoUnwrapIdentifier to extract the pure identifier leaf,
+        // avoiding StringSpanOfSymbol which includes #(...) parameter text
+        const auto *id_leaf = verilog::AutoUnwrapIdentifier(*type_id);
+        if (!id_leaf) continue;
+        std::string module_type_name(id_leaf->get().text());
 
         // Skip if it looks like a built-in type
         if (module_type_name == "reg" || module_type_name == "wire" ||

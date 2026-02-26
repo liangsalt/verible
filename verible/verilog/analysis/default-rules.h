@@ -107,6 +107,8 @@ inline constexpr const char* kGJBRuleSet[] = {
     "GJB-10157-R-2-7",
     "GJB-10157-R-2-8",
     "GJB-10157-R-2-9",
+    "GJB-10157-R-2-10",
+    "GJB-10157-R-3-2",
     // GJB 10157 Advisory rules (A-2-x) - warning severity
     "GJB-10157-A-2-1",
     // Note: always-comb and always-comb-blocking are NOT included

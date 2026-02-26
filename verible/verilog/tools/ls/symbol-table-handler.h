@@ -108,6 +108,11 @@ class SymbolTableHandler {
   // Updates FLAGS_top_modules based on current symbol table analysis.
   void UpdateTopModulesFlag();
 
+  // Updates the global ModulePortDirsCache with port directions from all
+  // modules in the project. This enables cross-file lint rules like
+  // GJB-10157-R-3-2 to check port directions of modules defined elsewhere.
+  void UpdateModulePortDirsCache();
+
   // Set workspace files received from the client (e.g., DUDUlinter plugin).
   // These files will be used instead of verible.filelist when available.
   void SetWorkspaceFiles(const std::vector<std::string> &files);

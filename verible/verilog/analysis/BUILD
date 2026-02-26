@@ -24,6 +24,12 @@ cc_library(
 )
 
 cc_library(
+    name = "module-port-dirs-cache",
+    srcs = ["module-port-dirs-cache.cc"],
+    hdrs = ["module-port-dirs-cache.h"],
+)
+
+cc_library(
     name = "default-rules",
     hdrs = ["default-rules.h"],
     deps = [

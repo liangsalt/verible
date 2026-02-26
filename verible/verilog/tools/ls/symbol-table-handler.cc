@@ -33,6 +33,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "verible/verilog/analysis/module-port-dirs-cache.h"
 #include "verible/verilog/analysis/top-modules-flag.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -48,6 +49,9 @@
 #include "verible/common/util/range.h"
 #include "verible/verilog/analysis/symbol-table.h"
 #include "verible/verilog/analysis/verilog-analyzer.h"
+#include "verible/verilog/CST/declaration.h"
+#include "verible/verilog/CST/module.h"
+#include "verible/verilog/CST/port.h"
 #include "verible/verilog/analysis/verilog-filelist.h"
 #include "verible/verilog/analysis/verilog-project.h"
 #include "verible/verilog/tools/ls/lsp-conversion.h"
@@ -283,6 +287,7 @@ void SymbolTableHandler::Prepare() {
     BuildProjectSymbolTable();
     // After building symbol table, update FLAGS_top_modules for lint rules.
     UpdateTopModulesFlag();
+    UpdateModulePortDirsCache();
   }
 }
 
@@ -295,6 +300,63 @@ void SymbolTableHandler::UpdateTopModulesFlag() {
     // Also update the global cache for lint rules to access directly
     verilog::analysis::TopModulesCache::GetInstance().SetTopModules(top_modules);
   }
+}
+
+void SymbolTableHandler::UpdateModulePortDirsCache() {
+  if (!curr_project_) return;
+
+  auto &cache = verilog::analysis::ModulePortDirsCache::GetInstance();
+  cache.Clear();
+
+  for (auto &unit : *curr_project_) {
+    VerilogSourceFile *const verilog_file = unit.second.get();
+    if (!verilog_file->is_parsed()) continue;
+    const verible::TextStructureView *text_structure =
+        verilog_file->GetTextStructure();
+    if (!text_structure) continue;
+    const auto &tree = text_structure->SyntaxTree();
+    if (tree == nullptr) continue;
+
+    for (const auto &mod_match : FindAllModuleDeclarations(*tree)) {
+      const auto *name_leaf = GetModuleName(*mod_match.match);
+      if (!name_leaf) continue;
+      std::string mod_name(name_leaf->get().text());
+
+      // ANSI-style port declarations.
+      const auto *port_decl_list =
+          GetModulePortDeclarationList(*mod_match.match);
+      if (port_decl_list) {
+        for (const auto &port_match :
+             FindAllPortDeclarations(*port_decl_list)) {
+          const auto *dir_leaf =
+              GetDirectionFromPortDeclaration(*port_match.match);
+          const auto *id_leaf =
+              GetIdentifierFromPortDeclaration(*port_match.match);
+          if (dir_leaf && id_leaf) {
+            cache.SetPortDirection(mod_name,
+                                   std::string(id_leaf->get().text()),
+                                   std::string(dir_leaf->get().text()));
+          }
+        }
+      }
+
+      // Non-ANSI-style port declarations.
+      for (const auto &port_match :
+           FindAllModulePortDeclarations(*mod_match.match)) {
+        const auto *dir_leaf =
+            GetDirectionFromModulePortDeclaration(*port_match.match);
+        const auto *id_leaf =
+            GetIdentifierFromModulePortDeclaration(*port_match.match);
+        if (dir_leaf && id_leaf) {
+          cache.SetPortDirection(mod_name,
+                                 std::string(id_leaf->get().text()),
+                                 std::string(dir_leaf->get().text()));
+        }
+      }
+    }
+  }
+
+  VLOG(1) << "Updated ModulePortDirsCache from project files";
 }
 
 std::optional<verible::TokenInfo>

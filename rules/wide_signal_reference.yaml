@@ -1,0 +1,32 @@
+# First seed rule that exercises A3 semantic primitives.
+#
+# Pattern: any kReference node, bound as `r`.
+# Condition: ResolveBitWidth(r) >= 8.
+#
+# Together this fires on any reference to a declared wire/reg/logic of width
+# 8 or more, and stays silent on references to scalar signals. Demonstrates
+# that pattern (CST) + condition (semantic) compose to a usable rule.
+name: wide_signal_reference
+version: 1
+author: a3-seed
+created: 2026-01-15
+source-scope: project
+topic: a3-smoke
+severity: warning
+why-bad: |
+  A3 smoke rule. Flags references to signals whose declared width is >= 8.
+  Real timing-oriented rules will combine this with structural patterns
+  (e.g. comparators between registered wide signals); here we just verify
+  the bit_width primitive runs.
+suggested-fix: |
+  N/A for the smoke rule. Real rules using bit_width_ge will pair it with
+  context-specific advice in their why-bad/suggested-fix text.
+pattern:
+  node: kReference
+  bind: r
+condition:
+  all:
+    - { primitive: bit_width_ge, target: r, arg: 8 }
+examples:
+  bad: _corpus/wide_signal_reference/bad.sv
+  good: _corpus/wide_signal_reference/good.sv

@@ -1,0 +1,19 @@
+name: for_loop_present
+version: 1
+author: a1-seed
+created: 2026-01-15
+source-scope: project
+topic: a1-smoke
+severity: warning
+why-bad: |
+  A1 smoke rule. Flags any kForLoopStatement. Demonstrates the engine on
+  a procedural-flow node tag.
+suggested-fix: |
+  In synthesizable RTL, prefer `generate for` constructs or explicit
+  unrolling when the trip count is fixed; runtime `for` in always_ff
+  can hide complexity.
+pattern:
+  node: kForLoopStatement
+examples:
+  bad: _corpus/for_loop_present/bad.sv
+  good: _corpus/for_loop_present/good.sv

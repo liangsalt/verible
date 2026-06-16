@@ -1,0 +1,31 @@
+# Demonstrates the comb_depth_gt primitive added in A3.9.
+#
+# Article context: deep arithmetic/comparator chains drive logic-level
+# counts up, which translates directly into critical path delay. Vivado
+# typically shows "Logic Levels: 9" or similar on these. This rule is a
+# RTL-side proxy that catches the same anti-pattern statically: any
+# expression with > 3 nested binary/unary operators.
+name: deep_arithmetic_chain
+version: 1
+author: a3-seed
+created: 2026-01-15
+source-scope: project
+topic: timing
+severity: warning
+why-bad: |
+  Deep nested binary/unary operator chains compile to long LUT/CARRY8
+  chains. Each extra level adds ~0.1-0.2 ns of cell + route delay -- at
+  300MHz+ designs even a 5-level chain can blow the budget.
+suggested-fix: |
+  Break the expression into staged intermediate signals registered between
+  the inputs and outputs, or restructure into a tree-shaped fanin so
+  Vivado can map it more efficiently.
+pattern:
+  node: kBinaryExpression
+  bind: expr
+condition:
+  all:
+    - { primitive: comb_depth_gt, target: expr, arg: 3 }
+examples:
+  bad: _corpus/deep_arithmetic_chain/bad.sv
+  good: _corpus/deep_arithmetic_chain/good.sv

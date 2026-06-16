@@ -1,0 +1,18 @@
+name: function_declaration_present
+version: 1
+author: a1-seed
+created: 2026-01-15
+source-scope: project
+topic: a1-smoke
+severity: warning
+why-bad: |
+  A1 smoke rule. Flags any kFunctionDeclaration. Demonstrates the engine
+  on a top-level declaration node.
+suggested-fix: |
+  In real designs this is benign; the rule exists to verify the engine
+  matches function declarations at all.
+pattern:
+  node: kFunctionDeclaration
+examples:
+  bad: _corpus/function_declaration_present/bad.sv
+  good: _corpus/function_declaration_present/good.sv

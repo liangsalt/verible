@@ -36,6 +36,7 @@
 #include "verible/verilog/tools/ls/lsp-parse-buffer.h"
 #include "verible/verilog/tools/ls/symbol-table-handler.h"
 #include "verible/verilog/tools/ls/verible-lsp-adapter.h"
+#include "verible/verilog/tools/ls/verilog-debug-rpc.h"
 
 ABSL_FLAG(bool, variables_in_outline, true,
           "Variables should be included into the symbol outline");
@@ -217,6 +218,52 @@ void VerilogLanguageServer::SetRequestHandlers() {
       "verilog/getAllModuleInfo",
       [this](const nlohmann::json &params) {
         return verilog::GetAllModuleInfo(parsed_buffers_);
+      });
+
+  // ---- RTL Brain debug RPC family ----
+  // Multi-workspace YAML rule management and scanning. These methods don't
+  // touch the standard LSP single-project state (parsed_buffers_,
+  // symbol_table_handler_); they run against the workspace_manager_ field.
+
+  dispatcher_.AddRequestHandler(
+      "verilog/workspace/open", [this](const nlohmann::json &params) {
+        return HandleWorkspaceOpen(&workspace_manager_, params);
+      });
+  dispatcher_.AddRequestHandler(
+      "verilog/workspace/close", [this](const nlohmann::json &params) {
+        return HandleWorkspaceClose(&workspace_manager_, params);
+      });
+  dispatcher_.AddRequestHandler(
+      "verilog/workspace/list", [this](const nlohmann::json &params) {
+        return HandleWorkspaceList(&workspace_manager_, params);
+      });
+  dispatcher_.AddRequestHandler(
+      "verilog/debug/scanRules", [this](const nlohmann::json &params) {
+        return HandleDebugScanRules(&workspace_manager_, params);
+      });
+  dispatcher_.AddRequestHandler(
+      "verilog/debug/reloadRules", [this](const nlohmann::json &params) {
+        return HandleDebugReloadRules(&workspace_manager_, params);
+      });
+  dispatcher_.AddRequestHandler(
+      "verilog/debug/validateRule", [this](const nlohmann::json &params) {
+        return HandleDebugValidateRule(&workspace_manager_, params);
+      });
+  dispatcher_.AddRequestHandler(
+      "verilog/debug/listRules", [this](const nlohmann::json &params) {
+        return HandleDebugListRules(&workspace_manager_, params);
+      });
+  dispatcher_.AddRequestHandler(
+      "verilog/debug/getCstNode", [this](const nlohmann::json &params) {
+        return HandleDebugGetCstNode(&workspace_manager_, params);
+      });
+  dispatcher_.AddRequestHandler(
+      "verilog/debug/listSymbols", [this](const nlohmann::json &params) {
+        return HandleDebugListSymbols(&workspace_manager_, params);
+      });
+  dispatcher_.AddRequestHandler(
+      "verilog/debug/countReferences", [this](const nlohmann::json &params) {
+        return HandleDebugCountReferences(&workspace_manager_, params);
       });
 
   // The client sends a request to shut down. Use that to exit our loop.

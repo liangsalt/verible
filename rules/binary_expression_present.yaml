@@ -1,0 +1,20 @@
+name: binary_expression_present
+version: 1
+author: a1-seed
+created: 2026-01-15
+source-scope: project
+topic: a1-smoke
+severity: warning
+why-bad: |
+  A1 smoke rule. Flags any kBinaryExpression. Demonstrates the engine on
+  the same node tag the future wide_comb_comparator_between_regs rule will
+  use; once A3 lands, this rule will be replaced by the real, semantics-
+  filtered version.
+suggested-fix: |
+  A1 placeholder. Real timing-oriented filtering arrives with A3 semantic
+  primitives (is_registered + bit_width_ge).
+pattern:
+  node: kBinaryExpression
+examples:
+  bad: _corpus/binary_expression_present/bad.sv
+  good: _corpus/binary_expression_present/good.sv

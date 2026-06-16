@@ -24,6 +24,7 @@
 #include "verible/common/lsp/lsp-protocol.h"
 #include "verible/common/lsp/lsp-text-buffer.h"
 #include "verible/common/lsp/message-stream-splitter.h"
+#include "verible/verilog/analysis/pattern-engine/workspace-manager.h"
 #include "verible/verilog/tools/ls/lsp-parse-buffer.h"
 #include "verible/verilog/tools/ls/symbol-table-handler.h"
 
@@ -100,6 +101,12 @@ class VerilogLanguageServer {
 
   // A flag for indicating "shutdown" request
   bool shutdown_requested_ = false;
+
+  // Multi-workspace state for the RTL Brain debug RPC family
+  // (verilog/debug/*). Each opened workspace gets its own VerilogProject and
+  // YAML RuleSet. Separate from the single-project state above used by
+  // standard LSP features so existing flows are unaffected.
+  verilog::analysis::pattern_engine::WorkspaceManager workspace_manager_;
 };
 
 }  // namespace verilog

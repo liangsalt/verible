@@ -232,6 +232,29 @@ cc_test(
 )
 
 cc_library(
+    name = "verilog-debug-rpc",
+    srcs = ["verilog-debug-rpc.cc"],
+    hdrs = ["verilog-debug-rpc.h"],
+    deps = [
+        "//verible/common/analysis:syntax-tree-search",
+        "//verible/common/text:concrete-syntax-leaf",
+        "//verible/common/text:concrete-syntax-tree",
+        "//verible/common/text:symbol",
+        "//verible/common/text:text-structure",
+        "//verible/common/text:tree-utils",
+        "//verible/verilog/CST:verilog-matchers",
+        "//verible/verilog/CST:verilog-nonterminals",
+        "//verible/verilog/analysis:verilog-project",
+        "//verible/verilog/analysis/pattern-engine:corpus-validator",
+        "//verible/verilog/analysis/pattern-engine:rule-set",
+        "//verible/verilog/analysis/pattern-engine:scan-runner",
+        "//verible/verilog/analysis/pattern-engine:workspace-manager",
+        "//verible/verilog/analysis/pattern-engine:yaml-rule-loader",
+        "@nlohmann_json//:singleheader-json",
+    ],
+)
+
+cc_library(
     name = "verilog-language-server",
     srcs = ["verilog-language-server.cc"],
     hdrs = ["verilog-language-server.h"],
@@ -240,6 +263,7 @@ cc_library(
         ":lsp-parse-buffer",
         ":symbol-table-handler",
         ":verible-lsp-adapter",
+        ":verilog-debug-rpc",
         "//verible/common/lsp:json-rpc-dispatcher",
         "//verible/common/lsp:lsp-file-utils",
         "//verible/common/lsp:lsp-protocol",
@@ -249,6 +273,7 @@ cc_library(
         "//verible/common/util:init-command-line",
         "//verible/common/util:logging",
         "//verible/verilog/analysis:verilog-project",
+        "//verible/verilog/analysis/pattern-engine:workspace-manager",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/status",
         "@nlohmann_json//:singleheader-json",

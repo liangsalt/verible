@@ -135,6 +135,7 @@ inline constexpr const char* kGJBSVRuleSet[] = {
     "packed-dimensions-range-ordering",
     "unpacked-dimensions-range-ordering",
     "no-trailing-spaces",
+    "no-tabs",
     "posix-eof",
     "line-length",
     "undersized-binary-literal",

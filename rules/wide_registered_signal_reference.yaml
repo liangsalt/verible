@@ -1,0 +1,37 @@
+# Composes two A3 semantic primitives.
+#
+# Pattern: any kReference, bound as r.
+# Condition: the referenced signal must be (a) >= 8 bits wide AND
+# (b) registered (declared inside an always_ff non-blocking write).
+#
+# Real timing motivation: wide-registered signals fed through combinational
+# logic are common critical-path candidates (the article's BRAM cascade and
+# wide-comparator situations both fall in this family). This rule is a
+# first-cut: it doesn't yet require the reference to be on a comb path --
+# that needs the future comb_depth primitive.
+name: wide_registered_signal_reference
+version: 1
+author: a3-seed
+created: 2026-01-15
+source-scope: project
+topic: timing
+severity: warning
+why-bad: |
+  References to wide (>=8-bit) signals that come from an always_ff are
+  common contributors to critical paths once they fan into combinational
+  arithmetic. Verify the downstream cone has enough pipeline registers,
+  or split the signal.
+suggested-fix: |
+  Either narrow the operating bit-width, or insert an intermediate
+  pipeline register before the wide reference participates in
+  arithmetic/compare logic.
+pattern:
+  node: kReference
+  bind: r
+condition:
+  all:
+    - { primitive: bit_width_ge, target: r, arg: 8 }
+    - { primitive: is_registered, target: r }
+examples:
+  bad: _corpus/wide_registered_signal_reference/bad.sv
+  good: _corpus/wide_registered_signal_reference/good.sv

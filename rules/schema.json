@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/chipsalliance/verible/rules/schema.json",
+  "title": "Verible RTL Brain rule",
+  "description": "A single YAML lint rule loadable at runtime by the Verible daemon's pattern engine. Files matching this schema live under <project>/rules/, ~/.duducode/rtl-brain/rules/user/, ~/.duducode/teams/<team>/rtl-rules/, or ~/.duducode/rtl-brain/rules/community/.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "topic", "severity", "why-bad", "pattern", "examples"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Globally unique snake_case rule id. Must equal the filename without the .yaml suffix."
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1,
+      "description": "Bumped whenever the rule changes meaning (not for cosmetic edits)."
+    },
+    "author": {
+      "type": "string",
+      "description": "Free-form. Use 'ai-rtl-debug-skill' / 'ai-rtl-author-skill' for AI-authored rules so telemetry can distinguish."
+    },
+    "created": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO date of first authoring."
+    },
+    "source-scope": {
+      "type": "string",
+      "enum": ["project", "user", "team", "community"],
+      "description": "Scope in which this rule originated."
+    },
+    "promoted-from": {
+      "type": ["string", "null"],
+      "enum": ["project", "user", "team", "community", null],
+      "description": "If this rule was promoted from a lower-precedence scope, what scope did it come from. null otherwise."
+    },
+    "topic": {
+      "type": "string",
+      "description": "Loose category for grouping in reports. Common values: timing, cdc, reset, naming, fsm, ram, latches, fanout, dataflow."
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["error", "warning"],
+      "description": "error = must fix; warning = advisory."
+    },
+    "why-bad": {
+      "type": "string",
+      "minLength": 10,
+      "description": "Human-readable explanation of why a hit is a problem. Surfaced verbatim to the user and to LLM oracle decision points."
+    },
+    "suggested-fix": {
+      "type": "string",
+      "description": "Human-readable fix advice. The /fpga-close-timing and /rtl-debug skills feed this to the LLM when generating patch proposals."
+    },
+    "pattern": {
+      "$ref": "#/$defs/patternNode",
+      "description": "CST pattern. Compiled at load time into a verible::matcher::Matcher tree."
+    },
+    "condition": {
+      "$ref": "#/$defs/condition",
+      "description": "Semantic-level filter that runs after the CST pattern matches. Uses primitives registered in pattern-engine/semantic-primitives. A1 ignores this field; A3 evaluates it."
+    },
+    "examples": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bad", "good"],
+      "properties": {
+        "bad": {
+          "type": "string",
+          "description": "Relative path (from the rule file) to a SV snippet that MUST fire this rule. Required by corpus-validator."
+        },
+        "good": {
+          "type": "string",
+          "description": "Relative path (from the rule file) to a SV snippet that MUST NOT fire this rule. Required by corpus-validator."
+        }
+      }
+    },
+    "stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Asynchronously written by rule-stats after each scan. Do not edit by hand.",
+      "properties": {
+        "invocations": { "type": "integer", "minimum": 0 },
+        "hits": { "type": "integer", "minimum": 0 },
+        "user_dismissed": { "type": "integer", "minimum": 0 },
+        "last_used": { "type": "string", "format": "date" }
+      }
+    }
+  },
+  "$defs": {
+    "patternNode": {
+      "oneOf": [
+        { "$ref": "#/$defs/nodeMatcher" },
+        { "$ref": "#/$defs/leafMatcher" }
+      ]
+    },
+    "nodeMatcher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node"],
+      "properties": {
+        "node": {
+          "type": "string",
+          "description": "NodeEnum tag. Accepted with or without the leading 'k', e.g. 'kBinaryExpression' or 'BinaryExpression'."
+        },
+        "bind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Capture this match under the given name. Visible to condition primitives and surfaced as a binding to RPC clients."
+        },
+        "inner": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/patternNode" },
+          "description": "Direct children that must also match. Equivalent to Matcher::AddMatchers."
+        },
+        "descend": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Path of NodeEnum tags to walk before matching. Equivalent to MakePathMatcher."
+        }
+      }
+    },
+    "leafMatcher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["leaf"],
+      "properties": {
+        "leaf": {
+          "type": "string",
+          "description": "Literal token text to match (e.g. '==', 'always_ff', 'posedge'). Tokens are matched by text, not by enum, in A1."
+        },
+        "bind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        }
+      }
+    },
+    "condition": {
+      "type": "object",
+      "description": "Boolean tree over semantic primitives. Empty / missing condition means: pattern hit is the result.",
+      "additionalProperties": false,
+      "properties": {
+        "all": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/conditionAtom" },
+          "description": "All children must hold."
+        },
+        "any": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/conditionAtom" },
+          "description": "At least one child must hold."
+        },
+        "not": { "$ref": "#/$defs/conditionAtom" }
+      }
+    },
+    "conditionAtom": {
+      "oneOf": [
+        { "$ref": "#/$defs/condition" },
+        { "$ref": "#/$defs/primitiveCall" }
+      ]
+    },
+    "primitiveCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primitive", "target"],
+      "properties": {
+        "primitive": {
+          "type": "string",
+          "enum": [
+            "is_registered",
+            "bit_width",
+            "bit_width_ge",
+            "bit_width_le",
+            "fanout",
+            "fanout_gt",
+            "clock_domain",
+            "comb_depth_gt",
+            "drives_comb_logic_to_register"
+          ],
+          "description": "Registered primitive name. The full list is in pattern-engine/semantic-primitives.cc (added in A3)."
+        },
+        "target": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Name of a bind from the pattern section."
+        },
+        "arg": {
+          "description": "Optional scalar argument (e.g. the integer for bit_width_ge)."
+        }
+      }
+    }
+  }
+}

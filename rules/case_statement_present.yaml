@@ -1,0 +1,19 @@
+name: case_statement_present
+version: 1
+author: a1-seed
+created: 2026-01-15
+source-scope: project
+topic: a1-smoke
+severity: warning
+why-bad: |
+  A1 smoke rule. Flags any kCaseStatement. Demonstrates the engine handles
+  a different node-tag pattern from the always_statement_present rule.
+suggested-fix: |
+  In real designs, simple case statements can often be replaced with ternary
+  expressions or explicit FSM coding patterns; default branches are required
+  to avoid latch inference.
+pattern:
+  node: kCaseStatement
+examples:
+  bad: _corpus/case_statement_present/bad.sv
+  good: _corpus/case_statement_present/good.sv

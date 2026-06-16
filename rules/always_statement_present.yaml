@@ -1,0 +1,24 @@
+# Seed rule for the A1 pattern engine.
+#
+# Detects any classic `always` block. The pattern alone is enough to prove
+# the YAML loader + scan-runner work end-to-end. Real intent ("flag legacy
+# always when always_comb / always_ff would do") needs the A3 semantic layer
+# to distinguish keywords; A1 just verifies the engine.
+name: always_statement_present
+version: 1
+author: a1-seed
+created: 2026-01-15
+source-scope: project
+topic: a1-smoke
+severity: warning
+why-bad: |
+  A1 smoke rule. Flags any kAlwaysStatement. Demonstrates that the YAML
+  loader compiles a node-tag pattern into a runtime Matcher tree and that
+  scan-runner finds it in the CST.
+suggested-fix: |
+  In real designs, prefer `always_comb` or `always_ff` over plain `always`.
+pattern:
+  node: kAlwaysStatement
+examples:
+  bad: _corpus/always_statement_present/bad.sv
+  good: _corpus/always_statement_present/good.sv

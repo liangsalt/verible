@@ -1,0 +1,37 @@
+# Demonstrates is_fsm_state_register primitive.
+#
+# Pattern: any kReference, bind r.
+# Condition: the referenced identifier is the state register of an FSM
+# (LHS of always_ff non-blocking AND case-expression in same block).
+#
+# This is a positive identification rule: it FIRES when an FSM state
+# register is referenced anywhere in the design. Use it as a building
+# block for stricter checks (e.g. "FSM state register referenced in
+# wide arithmetic" -> potential metastability / encoding-style issues).
+name: fsm_state_register_reference
+version: 1
+author: a3-seed
+created: 2026-01-15
+source-scope: project
+topic: fsm
+severity: warning
+why-bad: |
+  This rule itself isn't a defect detector -- it identifies references to
+  FSM state registers so downstream tooling (or human reviewers) can audit
+  how they're consumed. Worth flagging because state registers tend to be
+  hot signals for race conditions, gray-coding mistakes, and partial
+  decode bugs.
+suggested-fix: |
+  Verify any reference to a state register either: (a) participates in a
+  comparator with a defined state constant, or (b) is registered again
+  before fanning into combinational logic. Both reduce metastability and
+  decode noise.
+pattern:
+  node: kReference
+  bind: r
+condition:
+  all:
+    - { primitive: is_fsm_state_register, target: r }
+examples:
+  bad: _corpus/fsm_state_register_reference/bad.sv
+  good: _corpus/fsm_state_register_reference/good.sv
